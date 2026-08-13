@@ -183,7 +183,9 @@ Agent-assisted negotiation **on the buy side is in** — drafts informed by Cite
 
 **The ceiling, stated plainly:** throughput is roughly **30–60 orders/day per operator**. That — not demand, not inventory — is the revenue constraint on this business. Every growth plan has to be read against operator headcount, and the model should be built assuming it.
 
-> **Settled 2026-08-13:** the outreach inbox is staffed by the **existing Shortlist team** at launch (§13.4). Note: at launch volume the ceiling is not binding — demand, not capacity, is the near-term constraint (see §15 sequencing).
+> **Settled 2026-08-13:** the outreach inbox is staffed by the **existing Shortlist team** at launch (§13.4).
+>
+> **Capacity correction (2026-08-13, post inventory audit):** with 84 active sites and the §4 throttle of 4 placements/site/quarter, sellable capacity is ~336 placements per quarter (~3.7/day) — far below one operator's 30–60/day. **Inventory, not operators, is the binding constraint at launch.** The operator ceiling only becomes real once inventory grows several-fold; until then, growing the vetted site pool (see §15 step 1 expansion pipeline) is the growth work.
 
 ---
 
@@ -291,7 +293,10 @@ Build the shortest path that takes real money and delivers one real link.
 > **Sequencing note (2026-08-13):** demand is the only unproven part of the model — nobody is asking for this yet; the bet is that agents start using it. Therefore **ship steps 1–2 first, alone, as the demand test**: inventory + read-only MCP search, listed on the MCP directories, with query volume instrumented per key. Build the money path (steps 3–7) only once exploratory query volume shows real agent traffic. `LiftObservation` (step 8) still starts on day one.
 
 1. **Import inventory** from the Shortlist team's existing site list; refresh ranking factors from Ahrefs/Moz/Majestic. Ship `Site` + `MetricSnapshot` and the Cite Score computation.
-   - **Inventory source (identified 2026-08-13):** the current database is the Google Sheet at `docs.google.com/spreadsheets/d/1_u6N3o1iYTmpGgXxfmpWPpwP6yoXPA_SQV3zF6yxcPE` (gid 2069061329). Pending shared access, audit its columns against the `Site` model (domain, contact, price tiers, link attributes, turnaround SLA, topics) and record the column mapping and gaps here.
+   - **Inventory source (audited 2026-08-13):** the Google Sheet at `docs.google.com/spreadsheets/d/1_u6N3o1iYTmpGgXxfmpWPpwP6yoXPA_SQV3zF6yxcPE`. The master tab holds **84 unique publisher sites** — clean and fully metric'd (DR/DA/TF/CF/traffic on every row, all refreshed April 2025), 66 priced ($25–$16,000, median $100), 77 with publisher email, 73 with an internal point of contact. Niches: Business 37, Lifestyle 14, Multiple 14, Tech 11, Home Improvement 5, Health 3. DR median 65 (70 sites ≥ 50) but organic traffic median only ~936/mo (33 sites ≥ 2k/mo).
+   - **Column mapping:** `Website`→`domain`; `Name`+`Email To`→`owner_contact`; `Rate`/`In-post Rate`→`price_tiers.seller_price` basis (listed_price = seller_price × margin rule, TBD); `Standard/Premium/Platinum`→tier flags; `Niche`/`Subniche`→`topic_taxonomy` seed; `DR/DA/TrustFlow/CitationFlow/Traffic/Spam Score`→first `MetricSnapshot` (marked stale — re-fetch at import); `Note`→parse for `max_links_per_post`, forbidden-niche surcharges, language, link attributes; `Added`/`Updated`→timestamps.
+   - **Gaps to backfill at import:** `link_attributes_offered` (only one site's note says "no follow" — everything else unknown; §12b requires this explicit per site), `turnaround_sla_days` (absent), 18 sites unpriced, metrics 16 months stale.
+   - **Expansion pipeline:** other tabs hold ~780 additional prospect domains (outreach lists, DA-scored blog lists) — unvetted and unpriced, but they are the raw material for growing inventory past 84.
 2. **MCP server** with `search_sites`, `get_site` on the free tier — read-only, rate-limited, watermarked. This is the marketing; ship it before anything else is buyable.
 3. **Stripe prepaid credits** + balance debit at order creation.
 4. **`create_campaign` + a v1 allocator** running pure cold-start composite-score-per-dollar with all five hard constraints enforced in code. No lift model yet.

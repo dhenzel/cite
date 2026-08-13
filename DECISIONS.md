@@ -30,9 +30,15 @@ None direct — "nobody is asking." The bet is that agents (Claude etc.) start u
 
 Technically and operationally feasible — v1 is a bounded build (data model, MCP+REST, Stripe, cold-start allocator, verification crawler, Gmail drafts); the two underestimated corners are the `page_indexed` check (no legitimate API; SERP scraping or paid SERP API) and `LiftObservation` across ChatGPT/Perplexity/AIO (a product category of its own — log from day one, don't assume it's a cron job). The 30–60 orders/day operator ceiling is not binding near-term; **demand is the constraint**, hence the re-sequenced v1.
 
-### Inventory source
+### Inventory source — audited 2026-08-13
 
-Current publisher database is a Google Sheet: `docs.google.com/spreadsheets/d/1_u6N3o1iYTmpGgXxfmpWPpwP6yoXPA_SQV3zF6yxcPE` (gid 2069061329). Not yet audited — needs to be shared with d.henzel@gmail.com for the connected tooling to read it. Then: map columns to the `Site` model and record gaps in spec §15 step 1.
+Google Sheet `docs.google.com/spreadsheets/d/1_u6N3o1iYTmpGgXxfmpWPpwP6yoXPA_SQV3zF6yxcPE` (shared, readable). Findings:
+
+- **Master tab: 84 unique publisher sites**, well-maintained: full DR/DA/TrustFlow/CitationFlow/traffic on every row (refreshed 2025-04, now 16 months stale), 66 priced (median $100, $25–$16k), 77 with publisher email, 73 with internal point of contact. DR median 65; organic traffic median ~936/mo (only 33 sites ≥ 2k/mo).
+- **Gaps:** `link_attributes_offered` unknown for essentially all sites (§12b makes this mandatory per site), no turnaround SLA data, 18 sites unpriced.
+- **~780 additional prospect domains** across other tabs (outreach and DA-scored lists) — unvetted expansion pipeline.
+- **Capacity implication (recorded in spec §8):** 84 sites × 4 placements/quarter throttle ≈ 336 placements/quarter (~3.7/day). **Inventory, not operator throughput, is the binding constraint at launch** — inventory growth is the real growth work, and "the inventory list is the moat" (§11) should be read accordingly: the moat is currently thin.
+- Full column→`Site` mapping recorded in spec §15 step 1.
 
 ## Still open
 

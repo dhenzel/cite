@@ -1,0 +1,303 @@
+# Cite — agent-native link placement marketplace (spec v1)
+
+**Status:** build-ready spec, v1. Settled with David Henzel on 2026-08-12; decisions updated 2026-08-13 (see `DECISIONS.md`).
+**Owner:** shortlist.io. **Working product name:** Cite.
+**Purpose of this document:** open it in Claude Code and start building with no other context.
+
+---
+
+## 1. Product definition
+
+Cite is an agent-native marketplace for earned link placements. A coding agent or marketing agent states an *intent* — "get `example.com/pricing` cited on fintech sites, $4,000, over 8 weeks, conservative risk" — and Cite constructs and executes the portfolio: which publisher sites, in what order, at what cadence, with what anchor-text distribution. It runs on shortlist.io's existing publisher inventory, prices each placement, takes the money, guarantees the link is live and indexed at T+30 or refunds, and reports state back over MCP and webhooks. It is sold as infrastructure, not as an agency.
+
+**Who it is for:** AI agents acting for SEO/growth teams (the primary buyer — an agent with a budget and a target URL), agencies and in-house SEO teams who want an API instead of a spreadsheet and a Slack thread, and developers wiring link acquisition into an existing growth stack. The human buyer never has to see the site list to get a result.
+
+**Why now:** buyers increasingly need to be *cited* by AI answer engines — ChatGPT, Perplexity, Google AI Overviews — as well as ranked by Google. "Citations" is the growing category; "backlinks" is the shrinking one with the bad smell. The name is one word, one spelling, no hyphen, and unambiguous when a model types `claude mcp add cite`. Runners-up: Byline, Vouch, Anchor. **Domain and trademark availability are NOT yet checked — see §13.**
+
+### The positioning that makes this not-a-catalog
+
+**Selection is the wrong interface.** A directory an agent browses is a commodity — any incumbent can ship one in a weekend. The primary verb is intent:
+
+```
+create_campaign(target_url, topics[], budget, timeframe, risk_tolerance)
+```
+
+An allocator does the portfolio construction. `search_sites` and `get_site` still exist for inspection and for trust-building, but they are **not the workflow**. The allocator and the lift data behind it are the product; the API is just how you reach them.
+
+> **Confirmed 2026-08-13:** intent-first stands as the core interface. See §12c — CrowdReply already occupies "catalog + MCP", which makes a catalog-first Cite a me-too and the intent interface the differentiator.
+
+---
+
+## 2. Why MCP-first
+
+Be the thing Claude Code reaches for the way it reaches for Vercel. **MCP server first, REST underneath** — the MCP server is the primary interface and the REST API is its implementation, not the other way round. A **free read tier with no card**, generous enough that agents query inventory exploratorily: the inventory search *is* the marketing, because every exploratory query teaches an agent that Cite is where link supply lives. Get listed everywhere agents discover servers: **mcp.so, Smithery, Glama, PulseMCP, awesome-mcp-servers**.
+
+---
+
+## 3. Data model
+
+Owner contact information is held on `Site` and is **never exposed through any API surface, at any tier, ever**. It is the asset.
+
+### `Site`
+| field | type | notes |
+|---|---|---|
+| `id` | uuid | |
+| `domain` | string | unique |
+| `owner_contact` | object | name, email, preferred channel — **private, never serialized to any API response** |
+| `current_metric_snapshot_id` | uuid | ref to latest `MetricSnapshot` |
+| `cite_score` | int 0–100 | derived composite, see §5 |
+| `topic_taxonomy` | string[] + vector | tags plus an embedding for relevance scoring |
+| `price_tiers` | object[] | `{link_type, word_count_band, seller_price, listed_price}` — `seller_price` never published |
+| `turnaround_sla_days` | int | typical publish time from acceptance |
+| `link_attributes_offered` | enum[] | `dofollow` \| `sponsored` \| `ugc` \| `nofollow` — **must be explicit per site**, see §12b |
+| `max_links_per_post` | int | typically 1–3 |
+| `accept_history` | counter | accepted orders |
+| `reject_history` | counter + reasons[] | |
+| `avg_response_latency_hours` | float | feeds outreach timing |
+| `accepted_floor_price` | money | lowest price this publisher has actually accepted — internal |
+| `status` | enum | `active` \| `paused` \| `burned` |
+| `throttle_counters` | object | `{placements_this_quarter, last_placement_at, quarter_key}` |
+
+### `MetricSnapshot` — append-only, immutable
+One row per site per refresh. **Never updated in place.** Immutability matters because price disputes are settled by pointing at the snapshot that priced the order.
+
+`site_id`, `ahrefs_dr`, `ahrefs_organic_traffic`, `moz_da`, `moz_pa`, `majestic_tf`, `majestic_cf`, `indexed_pages`, `outbound_link_count`, `spam_signals` (object), `fetched_at`, `source` (enum: `ahrefs` \| `moz` \| `majestic` \| `composite`).
+
+### `Campaign` — the new top-level object
+`id`, `buyer_id`, `target_url`, `topics[]`, `budget` (money), `timeframe` (start, end), `risk_tolerance` (enum `conservative` \| `balanced` \| `aggressive`), `state` (`draft` \| `allocated` \| `approved` \| `executing` \| `complete` \| `cancelled`), `allocation_plan` (ordered array of `{site_id, planned_price, planned_send_date, anchor_text_slot, rationale_code}`), `created_at`.
+
+### `Order`
+`id`, `campaign_id`, `site_id`, `content` (see content contract §6), `target_url`, `anchor_text`, `price_locked_at_creation` (money — the listed price at the moment of creation, immune to later refresh), `metric_snapshot_id` (what it was priced against), `state` (§7), `idempotency_key` (unique per buyer — a retrying agent must never double-buy), `created_at`, `published_url`, `refund_reason`.
+
+### `OutreachThread`
+`id`, `order_id`, `draft_body`, `sender_identity` (the named human), `channel`, `sent_at`, `replies[]` (`{direction, body, received_at}`), `state`, `edited_by_human` (bool — audit that a person actually touched it).
+
+### `Verification`
+`id`, `order_id`, `checked_at`, `checkpoint` (enum `T+7` \| `T+30` \| `T+90`), `link_present` (bool), `link_attribute` (as found in HTML), `http_status`, `page_indexed` (bool), `raw_evidence_ref`.
+
+### `LiftObservation` — **internal only, never exposed to a customer**
+`id`, `campaign_id`, `target_url`, `observed_at`, `keyword`, `google_rank`, `ai_citation_present` (bool per engine), `ai_citation_position`, `engine` (enum `chatgpt` \| `perplexity` \| `google_aio`), `source`.
+
+---
+
+## 4. The allocator (the heart of the system)
+
+Given a `Campaign`, produce an ordered `allocation_plan`. This is where the margin and the defensibility live.
+
+### Inputs
+- Budget, timeframe, topics, risk tolerance.
+- The buyer's **existing link profile** (fetched from the vendor APIs for the target domain) — so the allocator does not buy what they already have and can see anchor-text saturation already present.
+- Site pool filtered to `status = active`.
+- `LiftObservation` history across all campaigns (internal).
+
+### Hard constraints — enforced in code, not policy
+1. **Per-site throttle: max N placements per site per quarter.** Default N = 4; per-site override. This is the single most important constraint in the system: an autonomous engine will hammer the best publishers first and burn them in weeks. Enforced at allocation time *and* re-checked at order creation.
+2. **Anchor-text distribution limits.** Cap exact-match anchors as a share of the campaign and of the target URL's total known profile (default: exact-match ≤ 20% of campaign links, more conservative under `risk_tolerance = conservative`). Prevents over-optimisation penalties.
+3. **Topical relevance floor.** Cosine similarity between campaign topic vector and site topic vector ≥ threshold (default 0.6; raised under `conservative`).
+4. **Price ceiling.** No single placement above X% of campaign budget (default 25%), so one expensive site can't eat a small campaign.
+5. **Cadence spread.** Placements distributed across the timeframe — never all in week one. A link velocity spike is itself a risk signal.
+
+### Objective function
+Maximise **observed lift per dollar** once there is enough `LiftObservation` data for a site/topic pair. Formally, rank candidate sites by `E[lift | site, topic, buyer_profile] / listed_price`, subject to the constraints above, and fill the budget greedily with a diversity penalty (declining marginal value for repeat placements on the same site or same topical cluster).
+
+### Cold start (no lift data yet — this is v1's real state)
+Fall back to **composite score per dollar**: `cite_score` adjusted by topical relevance, publisher reliability (accept rate × inverse response latency), and freshness of the metric snapshot, divided by listed price. Deliberately over-explore in the first N campaigns — allocate a fixed slice (~15%) of each budget to sites with thin data, so the lift dataset actually gets built. Log the `rationale_code` per allocation so cold-start decisions are auditable later.
+
+---
+
+## 5. Vendor-metric licensing constraint (the LinkYard problem) and its fix
+
+**The constraint:** Ahrefs, Moz and Majestic all prohibit redistributing their metrics through a third-party API. Shortlist licenses all three, and that licence covers internal use — it does not cover re-serving DR or DA over Cite's public endpoints. Building the obvious thing (expose DR next to every site) is a licence violation and a takedown risk.
+
+**The fix:** Cite publishes a derived composite — the **Cite Score (0–100)** — plus freely-derivable facts:
+- traffic **band** (e.g. `10k–50k/mo`), not the vendor's number
+- indexed page count (Cite's own crawl)
+- topical vector / topic tags (Cite's own classification)
+- outbound-link hygiene (Cite's own crawl)
+- publisher reliability signals (Cite's own order history)
+
+**Raw vendor numbers are never present in a public API response.** They live in `MetricSnapshot`, internal-only, and feed the score.
+
+**Side benefit, and it is not small:** this makes Cite the *source of truth* rather than a reseller. An agent that learns to trust Cite Score is an agent that has to come back to Cite — not to Ahrefs — for the number that matters.
+
+---
+
+## 6. API surface
+
+MCP tool names are the canonical names; REST paths mirror them 1:1.
+
+### Free tier — no card
+| tool | does |
+|---|---|
+| `search_sites(topics[], min_score, max_price, link_attribute, limit)` | returns Cite Score + derived facts only; hard-capped result sets (§11) |
+| `get_site(site_id)` | one site, same field policy |
+| `estimate(target_url, topics[], budget, timeframe)` | what a budget would plausibly buy — shape of the plan, no commitment, no reserved inventory |
+
+### Funded — requires credit balance
+`create_campaign(target_url, topics[], budget, timeframe, risk_tolerance)` · `get_campaign(campaign_id)` · `approve_allocation(campaign_id)` · `create_order(campaign_id, site_id, content, target_url, anchor_text, idempotency_key)` · `get_order(order_id)` · `list_orders(campaign_id?, state?)` · `cancel_order(order_id)` — **pre-outreach only**, rejected once `outreach_sent` · `register_webhook(url, events[])`
+
+### Content contract
+The agent submits a **finished post**, not a topic pitch (flagged revisitable, §13):
+- `body`: markdown, min word count per site (`WORD_COUNT_LOW` if under)
+- `title`: string
+- `links`: **1–3 maximum**, at most one to `target_url`
+- `author_bio`: optional string
+- no images required in v1
+
+### Structured rejection errors
+Machine-actionable so an agent can fix and resubmit without a human round trip:
+`TOPIC_MISMATCH` (+ the site's accepted topics) · `WORD_COUNT_LOW` (+ required minimum) · `ANCHOR_OVER_OPTIMIZED` (+ current distribution and the cap) · `DUPLICATE_CONTENT` (+ where it collided) · `SITE_THROTTLED` (+ next eligible date) · `INSUFFICIENT_CREDIT`.
+
+### Webhooks
+`order.state_changed`, `order.published`, `order.verified`, `order.refunded`, `campaign.allocation_ready`, `campaign.complete`. **Webhooks matter because agents are async and polling is a tax** — an agent that has to poll for 30 days is an agent that stops using you.
+
+---
+
+## 7. Order lifecycle state machine
+
+```
+submitted
+  → auto_screen
+  → human_review
+  → outreach_drafted
+  → outreach_sent
+  → site_accepted | site_rejected
+  → published
+  → verified
+  → complete
+```
+
+- `site_rejected` → `refund_issued`
+- `link_lost_at_verification` (link absent or attribute changed at T+30) → `refund_issued`
+- `cancel_order` is legal only up to and including `outreach_drafted`.
+
+**Funds are held at order creation and released to Cite on `verified`.** Never before — the guarantee is only credible if the money is actually held.
+
+---
+
+## 8. The human fulfilment loop, and the capacity ceiling
+
+Every order produces a **Gmail draft in the team's inbox**, written in the voice of a named human, which a person edits and sends. **This is permanent, not scaffolding.** The reason is §12a: publishers will not be told the buying is programmatic, and a human in the loop is what keeps that true.
+
+Agent-assisted negotiation **on the buy side is in** — drafts informed by Cite's own order history: each publisher's real accepted floor, rejection threshold, response latency, best day of week to send. That is **margin, not customer-facing differentiation**; it is never marketed and never exposed. Agent-to-publisher negotiation is **out**: an agent haggling is the tell that breaks concealment.
+
+**The ceiling, stated plainly:** throughput is roughly **30–60 orders/day per operator**. That — not demand, not inventory — is the revenue constraint on this business. Every growth plan has to be read against operator headcount, and the model should be built assuming it.
+
+> **Settled 2026-08-13:** the outreach inbox is staffed by the **existing Shortlist team** at launch (§13.4). Note: at launch volume the ceiling is not binding — demand, not capacity, is the near-term constraint (see §15 sequencing).
+
+---
+
+## 9. Metrics refresh pipeline
+
+- **Nightly, staggered** — never a thundering herd against the vendor APIs.
+- Every site refreshed **every 14–30 days**; refresh order prioritised by staleness and by how often the site is being allocated.
+- Each refresh writes a **new immutable `MetricSnapshot`**; nothing is mutated.
+- **Auto-pause** any site whose Cite Score drops **more than 15 points** between snapshots — pending human review.
+- **`burned`** after **two rejections** or **one link removal**.
+- **Burned inventory never returns to search results.** Not filtered at the edge — excluded at the query layer.
+
+---
+
+## 10. Money
+
+- **Prepaid credits via Stripe**, debited at order creation.
+- **Margin sits between `seller_price` and `listed_price`. The seller cut is never published**, in any API response, at any tier.
+- **Refunds default to credit balance**; cash refund on request.
+- **The guarantee: link live and indexed at T+30, or full refund.** Fully within Cite's control, which is exactly why it is the thing being guaranteed.
+- Link lost between **T+30 and T+90** → **prorated credit**.
+
+### The three things that must never be conflated
+
+1. **GUARANTEE** — link live and indexed at T+30 or refund. Contractual. Within Cite's control.
+2. **MEASUREMENT** — rank and AI-citation movement on the buyer's target URL at T+0 / T+30 / T+90. Runs on every campaign, **with no promise attached**.
+3. **ALLOCATION** — uses (2) to pick sites. Invisible to the customer and absent from the contract.
+
+**Lift is measured but never guaranteed.** Outcome pricing was considered and **rejected as too risky** — correctly. **Lift data stays INTERNAL in v1. No per-customer lift dashboard.** A number you show a customer becomes a promise you made, and SEO confounders — core updates, their own site changes, seasonality — make that an unwinnable attribution argument. Aggregate, explicitly observational benchmarks are acceptable marketing; a per-customer scoreboard is not.
+
+---
+
+## 11. Trust and abuse
+
+Free querying will get scraped, and **the inventory list is the moat**.
+
+- **Hard rate limits on the free tier** — per key, per hour, per day.
+- **Per-key watermarking of result sets** — deterministic, invisible perturbation of ordering/subsetting per API key, so a leaked list traces back to the key that pulled it.
+- **Never more than ~50 sites returned per query** without a funded account, and no deep pagination on the free tier.
+- **Open decision:** mask domains above a score threshold until an order is placed. Protects the inventory; costs agent trust, because an agent that can't see what it's buying is an agent that buys less. Flagged, not decided (§13).
+
+---
+
+## 12. Risks — stated bluntly
+
+### (a) Concealment is the biggest operational risk in the design
+Publishers are not told the buying is programmatic. At agent volume, **a publisher will eventually notice the pattern** — same cadence, same content shape, same three senders — and the inventory list is the asset that burns. Mitigations, all of which cost real money:
+- per-site rate limiting (§4, constraint 1)
+- varied sender identity and varied send timing
+- human editors who **genuinely rewrite** rather than rubber-stamp — this is real editing time and **must be budgeted**, not assumed away
+
+This risk is structural, not a bug to be fixed. Build the model around it.
+
+> **Settled 2026-08-13:** David confirmed he is comfortable operating the concealment model as designed, and confirmed concealed earned outreach (not opted-in sellers) as the supply model.
+
+### (b) Link policy — SETTLED 2026-08-13: dofollow, risk accepted
+Undisclosed paid dofollow links are a **Google link-spam violation, and the penalty lands on the customer's site**, not on Cite. David's decision: sell dofollow and accept that risk, with these requirements carried into the build:
+
+1. **`link_attributes_offered` stays explicit per site in every API response** so an agent can filter and a buyer makes an informed choice. Never ship this ambiguous.
+2. **Buyer-facing ToS must state plainly that Google penalty risk sits with the customer.** The guarantee covers link liveness, never safety from algorithmic or manual action.
+3. **Channel caveat:** the distribution thesis is safety-trained agents (Claude, etc.), and those agents may resist recommending undisclosed paid dofollow placements to their users. Carrying honest per-site attributes — and `rel=sponsored` inventory where sites offer it — keeps the compliant path open for buyers whose agents insist on it.
+
+### (c) The API is not the moat — and CrowdReply proves it
+**Collaborator, Adsy, WhitePress, PRposting, LinkHouse** and similar already have order-placement APIs. **An MCP wrapper is a weekend of their engineering time.**
+
+**Closest competitor (added 2026-08-13): CrowdReply (crowdreply.io).** Positioned as an "AI search visibility" tool; a marketplace of 40,000+ *opted-in* publishers (DR ≥ 20, ≥ 2k organic traffic, spam screening), cart-based ordering with AI-filled briefs, money-back guarantee — and **an already-shipped MCP server (18+ tools) for Claude and Cursor**. The predicted weekend MCP wrapper has already happened.
+
+The gap that remains — and that Cite must own: CrowdReply's writes sit **behind human confirmation steps**; it is a human-supervised assistant product. Cite's differentiation is that an **autonomous agent completes the purchase end-to-end**: intent interface (`create_campaign`), allocator, idempotency keys, webhooks instead of polling, machine-actionable rejection errors, funds held until verification. A catalog+MCP me-too is dead on arrival; the allocator and the accumulated lift data have to be the defensible part. Every roadmap decision should be tested against: *does this widen the allocator's data advantage, or is it a feature they can copy in a week?*
+
+---
+
+## 13. Open decisions — for David
+
+1. **Domain and trademark for "Cite" — unchecked.** Blocks any public naming. *(Still open — do this now, it is cheap.)*
+2. ~~Dofollow vs. `rel=sponsored`~~ — **SETTLED 2026-08-13: dofollow, risk accepted** (§12b).
+3. **Masked vs. open domains on the free tier** (§11). *(Still open.)*
+4. ~~Who staffs the outreach inbox~~ — **SETTLED 2026-08-13: existing Shortlist team** (§8).
+5. **Finished posts vs. pitches** — currently finished posts; David flagged this as revisitable. *(Still open.)*
+6. ~~Branding — separate brand vs. Shortlist sub-product~~ — **SETTLED 2026-08-13: separate brand, quiet ownership confirmed** (§14).
+
+---
+
+## 14. Branding: separate brand, quiet ownership
+
+**Recommendation: launch Cite as a separate brand with quiet Shortlist ownership.** *(Confirmed 2026-08-13.)*
+
+**The deciding argument is concealment.** If the agent-facing product loudly markets "programmatic link placement at scale" under the Shortlist name, the publishers Shortlist emails can connect the two **in one search**. The marketing copy that sells Cite to agents is precisely the copy that burns Shortlist's publisher relationships. That is not a brand-preference argument, it is an operational one, and it decides the question.
+
+**Secondary arguments for separation:**
+- Agent-facing infrastructure and a human agency are **different buyers, different motions, different pricing**. Infrastructure is self-serve, usage-priced, developer-marketed; an agency is relationship-sold and retainer-priced.
+- A separate brand is **independently sellable**. Cite with its own allocator and lift dataset is an acquirable asset; a Shortlist product line is not.
+
+**The counter-argument, stated fairly:** Shortlist has existing trust, an aged domain with real authority, and a customer list — launching under it is faster, cheaper, and starts with credibility instead of a cold start. That is genuinely true. It is also outweighed, because the thing it buys (speed) is recoverable and the thing it risks (the publisher inventory) is not.
+
+**Recommendation: do NOT put "a Shortlist company" in the footer** while publisher concealment is the operating model. Quiet ownership means quiet.
+
+Note (2026-08-13): Cite is **not** Shortlist's repositioning — it is a separate project that feeds demand into Shortlist's publisher inventory. Shortlist's own positioning remains an open, independent question.
+
+---
+
+## 15. v1 scope cut — one order, end to end
+
+Build the shortest path that takes real money and delivers one real link.
+
+> **Sequencing note (2026-08-13):** demand is the only unproven part of the model — nobody is asking for this yet; the bet is that agents start using it. Therefore **ship steps 1–2 first, alone, as the demand test**: inventory + read-only MCP search, listed on the MCP directories, with query volume instrumented per key. Build the money path (steps 3–7) only once exploratory query volume shows real agent traffic. `LiftObservation` (step 8) still starts on day one.
+
+1. **Import inventory** from the Shortlist team's existing site list; refresh ranking factors from Ahrefs/Moz/Majestic. Ship `Site` + `MetricSnapshot` and the Cite Score computation.
+   - **Inventory source (identified 2026-08-13):** the current database is the Google Sheet at `docs.google.com/spreadsheets/d/1_u6N3o1iYTmpGgXxfmpWPpwP6yoXPA_SQV3zF6yxcPE` (gid 2069061329). Pending shared access, audit its columns against the `Site` model (domain, contact, price tiers, link attributes, turnaround SLA, topics) and record the column mapping and gaps here.
+2. **MCP server** with `search_sites`, `get_site` on the free tier — read-only, rate-limited, watermarked. This is the marketing; ship it before anything else is buyable.
+3. **Stripe prepaid credits** + balance debit at order creation.
+4. **`create_campaign` + a v1 allocator** running pure cold-start composite-score-per-dollar with all five hard constraints enforced in code. No lift model yet.
+5. **`create_order`** with idempotency, auto-screen (word count, topic match, anchor check, duplicate check), and the **Gmail draft** into the team inbox.
+6. **Order state machine + webhooks** — enough states to be honest with the agent about where an order actually is.
+7. **Verification crawler** at T+7 and T+30, and the **refund path** on `site_rejected` / `link_lost_at_verification`.
+8. **`LiftObservation` collection starts on day one, internal only** — even with no model consuming it yet. The dataset is the moat and it only exists if you start writing rows before you need them.
+
+**Explicitly not in v1:** lift-weighted allocation, agent-assisted negotiation drafts, `cancel_order` beyond the trivial case, T+90 verification, any customer-facing lift reporting.

@@ -30,21 +30,27 @@ None direct — "nobody is asking." The bet is that agents (Claude etc.) start u
 
 Technically and operationally feasible — v1 is a bounded build (data model, MCP+REST, Stripe, cold-start allocator, verification crawler, Gmail drafts); the two underestimated corners are the `page_indexed` check (no legitimate API; SERP scraping or paid SERP API) and `LiftObservation` across ChatGPT/Perplexity/AIO (a product category of its own — log from day one, don't assume it's a cron job). The 30–60 orders/day operator ceiling is not binding near-term; **demand is the constraint**, hence the re-sequenced v1.
 
-### Inventory source — audited 2026-08-13
+### Inventory source — audited 2026-08-13, **corrected 2026-08-15**
 
-Google Sheet `docs.google.com/spreadsheets/d/1_u6N3o1iYTmpGgXxfmpWPpwP6yoXPA_SQV3zF6yxcPE` (shared, readable). Findings:
+Google Sheet `docs.google.com/spreadsheets/d/1_u6N3o1iYTmpGgXxfmpWPpwP6yoXPA_SQV3zF6yxcPE` ("Copy of ShortList.io - Client CRM Marketer Version").
 
-- **Master tab: 84 unique publisher sites**, well-maintained: full DR/DA/TrustFlow/CitationFlow/traffic on every row (refreshed 2025-04, now 16 months stale), 66 priced (median $100, $25–$16k), 77 with publisher email, 73 with internal point of contact. DR median 65; organic traffic median ~936/mo (only 33 sites ≥ 2k/mo).
-- **Gaps:** `link_attributes_offered` unknown for essentially all sites (§12b makes this mandatory per site), no turnaround SLA data, 18 sites unpriced.
-- **~780 additional prospect domains** across other tabs (outreach and DA-scored lists) — unvetted expansion pipeline.
-- **Capacity implication (recorded in spec §8):** 84 sites × 4 placements/quarter throttle ≈ 336 placements/quarter (~3.7/day). **Inventory, not operator throughput, is the binding constraint at launch** — inventory growth is the real growth work, and "the inventory list is the moat" (§11) should be read accordingly: the moat is currently thin.
+> ⚠️ The 2026-08-13 audit reported **84 sites** and concluded inventory was the binding constraint. That figure was an artifact of a silently truncated Drive markdown export. The full CSV export (2026-08-15) shows the real database below; the capacity conclusion is reversed accordingly.
+
+- **9,463 rows / 9,453 unique publisher domains.** 8,108 priced (median $90, mean $128, range $3–$16k), 9,163 with publisher email. DR median 47 (4,296 sites ≥ 50); DA median 43; organic traffic median ~940/mo (3,579 sites ≥ 2k/mo); ~7,600 rows metric-refreshed in 2025.
+- **Niches:** Multiple 2,452 · Business 2,330 · Lifestyle 1,815 · Tech 995 · Health & Wellness 432 · Home Improvement 394 · Finance 161 · EDU/Career 148 · Auto 144 · Crypto 143 · Pets 105 · Sport 101.
+- **Gaps:** `link_attributes_offered` unknown at 9.5k-row scale (a real backfill project — §12b makes it mandatory per site), no turnaround SLA data, ~1,350 rows unpriced, metrics ~16 months stale.
+- **Capacity (spec §8):** 9,453 sites × 4/quarter throttle ≈ 37,800 placements/quarter (~420/day) — **operator throughput (30–60 orders/day/operator) is the binding constraint, as the spec originally stated.**
 - Full column→`Site` mapping recorded in spec §15 step 1.
+
+## 2026-08-15 — blind placements (settles §13.3)
+
+**Buyers never see the site's domain until the link is delivered — at any tier, on any endpoint.** Pre-delivery, sites are anonymized handles: `site_id`, Cite Score, topic tags, traffic band, price, link attribute, turnaround. The domain first appears as `published_url` on delivery. Consequences recorded in spec §11/§6/§3: the scraping surface mostly dissolves (no domain list to steal), watermarking becomes second-line, and the T+30 refund guarantee is the trust mechanism that makes blind buying rational for an agent.
 
 ## Still open
 
 1. **Domain + trademark check for "Cite"** (§13.1) — cheap, blocks all public naming; do now.
-2. **Masked vs. open domains on the free tier** (§13.3).
-3. **Finished posts vs. pitches** (§13.5) — currently finished posts, flagged revisitable.
-4. **Ahrefs / Moz / Majestic API access** — verify what Shortlist's licences actually include (API vs. UI-only).
+2. **Finished posts vs. pitches** (§13.5) — currently finished posts, flagged revisitable.
+3. **Ahrefs / Moz / Majestic API access** — verify what Shortlist's licences actually include (API vs. UI-only).
+4. **Link-attribute backfill** — dofollow/sponsored unknown across 9,453 sites; mandatory field before launch (§12b).
 5. **Build team** — who drives the v1 build (agent-driven by David, Shortlist devs, or a hire).
 6. **Shortlist's own repositioning** — independent open question; not resolved by shipping Cite.

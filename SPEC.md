@@ -25,6 +25,8 @@ create_campaign(target_url, topics[], budget, timeframe, risk_tolerance)
 An allocator does the portfolio construction. `search_sites` and `get_site` still exist for inspection and for trust-building, but they are **not the workflow**. The allocator and the lift data behind it are the product; the API is just how you reach them.
 
 > **Confirmed 2026-08-13:** intent-first stands as the core interface. See §12c — CrowdReply already occupies "catalog + MCP", which makes a catalog-first Cite a me-too and the intent interface the differentiator.
+>
+> **Reinforced 2026-08-15 by blind placements (§11):** there is literally no catalog to browse — pre-delivery, buyers see anonymized handles (score, topic, band, price), never domains. The buyer purchases an outcome, and the T+30 guarantee is what makes buying blind rational.
 
 ---
 
@@ -36,7 +38,7 @@ Be the thing Claude Code reaches for the way it reaches for Vercel. **MCP server
 
 ## 3. Data model
 
-Owner contact information is held on `Site` and is **never exposed through any API surface, at any tier, ever**. It is the asset.
+Owner contact information is held on `Site` and is **never exposed through any API surface, at any tier, ever**. It is the asset. As of the blind-placements decision (§11, 2026-08-15), **`domain` carries the same pre-delivery privacy**: it is never serialized in any API response until the order's link is delivered, when it surfaces as `published_url`.
 
 ### `Site`
 | field | type | notes |
@@ -129,8 +131,8 @@ MCP tool names are the canonical names; REST paths mirror them 1:1.
 ### Free tier — no card
 | tool | does |
 |---|---|
-| `search_sites(topics[], min_score, max_price, link_attribute, limit)` | returns Cite Score + derived facts only; hard-capped result sets (§11) |
-| `get_site(site_id)` | one site, same field policy |
+| `search_sites(topics[], min_score, max_price, link_attribute, limit)` | returns **anonymized site handles** — `site_id`, Cite Score + derived facts, **never the domain** (§11 blind placements); hard-capped result sets |
+| `get_site(site_id)` | one site, same field policy — no domain pre-delivery |
 | `estimate(target_url, topics[], budget, timeframe)` | what a budget would plausibly buy — shape of the plan, no commitment, no reserved inventory |
 
 ### Funded — requires credit balance
@@ -185,7 +187,7 @@ Agent-assisted negotiation **on the buy side is in** — drafts informed by Cite
 
 > **Settled 2026-08-13:** the outreach inbox is staffed by the **existing Shortlist team** at launch (§13.4).
 >
-> **Capacity correction (2026-08-13, post inventory audit):** with 84 active sites and the §4 throttle of 4 placements/site/quarter, sellable capacity is ~336 placements per quarter (~3.7/day) — far below one operator's 30–60/day. **Inventory, not operators, is the binding constraint at launch.** The operator ceiling only becomes real once inventory grows several-fold; until then, growing the vetted site pool (see §15 step 1 expansion pipeline) is the growth work.
+> **Capacity check (corrected 2026-08-15):** with the full 9,453-site database and the §4 throttle of 4 placements/site/quarter, inventory-side capacity is ~37,800 placements/quarter (~420/day) — an order of magnitude above one operator's 30–60/day. **The original claim stands: operator throughput, not inventory or demand-side supply, is the revenue ceiling.** (A 2026-08-13 note briefly claimed the reverse, based on a truncated 84-row export of the database; disregard it.)
 
 ---
 
@@ -220,12 +222,13 @@ Agent-assisted negotiation **on the buy side is in** — drafts informed by Cite
 
 ## 11. Trust and abuse
 
-Free querying will get scraped, and **the inventory list is the moat**.
+The inventory list is the moat — and the protection model is **blind placements** (settled 2026-08-15, §13.3):
 
-- **Hard rate limits on the free tier** — per key, per hour, per day.
-- **Per-key watermarking of result sets** — deterministic, invisible perturbation of ordering/subsetting per API key, so a leaked list traces back to the key that pulled it.
-- **Never more than ~50 sites returned per query** without a funded account, and no deep pagination on the free tier.
-- **Open decision:** mask domains above a score threshold until an order is placed. Protects the inventory; costs agent trust, because an agent that can't see what it's buying is an agent that buys less. Flagged, not decided (§13).
+- **Domains are hidden until the link is delivered — every tier, every endpoint.** Pre-delivery, a site is an anonymized handle: `site_id` + Cite Score + topic tags + traffic band + price + link attribute + turnaround. The `domain` field is never serialized in any pre-delivery API response, exactly like `owner_contact`. The buyer first sees the actual site as `published_url` when the order reaches `published`.
+- This **dissolves most of the scraping surface**: there is no domain list to steal, so free exploratory querying can stay generous. The known cost — an agent that can't see what it's buying buys less — is absorbed by the T+30 guarantee: if the delivered placement isn't live and indexed, the money comes back.
+- **Hard rate limits on the free tier** stay — per key, per hour, per day (now protecting pricing/score data rather than domains).
+- **Per-key watermarking of result sets** becomes second-line: deterministic perturbation of ordering/subsetting per key, so systematic reconstruction attempts still trace back to a key.
+- **Never more than ~50 results per query** without a funded account, and no deep pagination on the free tier.
 
 ---
 
@@ -261,7 +264,7 @@ The gap that remains — and that Cite must own: CrowdReply's writes sit **behin
 
 1. **Domain and trademark for "Cite" — unchecked.** Blocks any public naming. *(Still open — do this now, it is cheap.)*
 2. ~~Dofollow vs. `rel=sponsored`~~ — **SETTLED 2026-08-13: dofollow, risk accepted** (§12b).
-3. **Masked vs. open domains on the free tier** (§11). *(Still open.)*
+3. ~~Masked vs. open domains on the free tier~~ — **SETTLED 2026-08-15: blind placements — domains hidden at every tier until the link is delivered** (§11).
 4. ~~Who staffs the outreach inbox~~ — **SETTLED 2026-08-13: existing Shortlist team** (§8).
 5. **Finished posts vs. pitches** — currently finished posts; David flagged this as revisitable. *(Still open.)*
 6. ~~Branding — separate brand vs. Shortlist sub-product~~ — **SETTLED 2026-08-13: separate brand, quiet ownership confirmed** (§14).
@@ -293,10 +296,9 @@ Build the shortest path that takes real money and delivers one real link.
 > **Sequencing note (2026-08-13):** demand is the only unproven part of the model — nobody is asking for this yet; the bet is that agents start using it. Therefore **ship steps 1–2 first, alone, as the demand test**: inventory + read-only MCP search, listed on the MCP directories, with query volume instrumented per key. Build the money path (steps 3–7) only once exploratory query volume shows real agent traffic. `LiftObservation` (step 8) still starts on day one.
 
 1. **Import inventory** from the Shortlist team's existing site list; refresh ranking factors from Ahrefs/Moz/Majestic. Ship `Site` + `MetricSnapshot` and the Cite Score computation.
-   - **Inventory source (audited 2026-08-13):** the Google Sheet at `docs.google.com/spreadsheets/d/1_u6N3o1iYTmpGgXxfmpWPpwP6yoXPA_SQV3zF6yxcPE`. The master tab holds **84 unique publisher sites** — clean and fully metric'd (DR/DA/TF/CF/traffic on every row, all refreshed April 2025), 66 priced ($25–$16,000, median $100), 77 with publisher email, 73 with an internal point of contact. Niches: Business 37, Lifestyle 14, Multiple 14, Tech 11, Home Improvement 5, Health 3. DR median 65 (70 sites ≥ 50) but organic traffic median only ~936/mo (33 sites ≥ 2k/mo).
+   - **Inventory source (audited 2026-08-13; corrected 2026-08-15):** the Google Sheet at `docs.google.com/spreadsheets/d/1_u6N3o1iYTmpGgXxfmpWPpwP6yoXPA_SQV3zF6yxcPE` ("Copy of ShortList.io - Client CRM Marketer Version"). Full CSV export: **9,463 rows, 9,453 unique publisher domains** — 8,108 priced (median $90, mean $128, range $3–$16,000), 9,163 with publisher email, DR median 47 (4,296 sites ≥ 50), organic traffic median ~940/mo (3,579 sites ≥ 2k/mo), ~7,600 rows metric-refreshed in 2025. Niches: Multiple 2,452 · Business 2,330 · Lifestyle 1,815 · Tech 995 · Health & Wellness 432 · Home Improvement 394 · Finance 161 · long tail (EDU/Career, Auto, Crypto, Pets, Sport). *(An earlier audit reported 84 sites — that was a truncated Drive markdown export, not the database.)*
    - **Column mapping:** `Website`→`domain`; `Name`+`Email To`→`owner_contact`; `Rate`/`In-post Rate`→`price_tiers.seller_price` basis (listed_price = seller_price × margin rule, TBD); `Standard/Premium/Platinum`→tier flags; `Niche`/`Subniche`→`topic_taxonomy` seed; `DR/DA/TrustFlow/CitationFlow/Traffic/Spam Score`→first `MetricSnapshot` (marked stale — re-fetch at import); `Note`→parse for `max_links_per_post`, forbidden-niche surcharges, language, link attributes; `Added`/`Updated`→timestamps.
-   - **Gaps to backfill at import:** `link_attributes_offered` (only one site's note says "no follow" — everything else unknown; §12b requires this explicit per site), `turnaround_sla_days` (absent), 18 sites unpriced, metrics 16 months stale.
-   - **Expansion pipeline:** other tabs hold ~780 additional prospect domains (outreach lists, DA-scored blog lists) — unvetted and unpriced, but they are the raw material for growing inventory past 84.
+   - **Gaps to backfill at import:** `link_attributes_offered` unknown for essentially all 9,453 sites (§12b requires this explicit per site — at this scale the backfill is a real project, not a cleanup pass), `turnaround_sla_days` absent, ~1,350 rows unpriced, metrics ~16 months stale.
 2. **MCP server** with `search_sites`, `get_site` on the free tier — read-only, rate-limited, watermarked. This is the marketing; ship it before anything else is buyable.
 3. **Stripe prepaid credits** + balance debit at order creation.
 4. **`create_campaign` + a v1 allocator** running pure cold-start composite-score-per-dollar with all five hard constraints enforced in code. No lift model yet.

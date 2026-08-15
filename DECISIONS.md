@@ -46,6 +46,15 @@ Google Sheet `docs.google.com/spreadsheets/d/1_u6N3o1iYTmpGgXxfmpWPpwP6yoXPA_SQV
 
 **Buyers never see the site's domain until the link is delivered — at any tier, on any endpoint.** Pre-delivery, sites are anonymized handles: `site_id`, Cite Score, topic tags, traffic band, price, link attribute, turnaround. The domain first appears as `published_url` on delivery. Consequences recorded in spec §11/§6/§3: the scraping surface mostly dissolves (no domain list to steal), watermarking becomes second-line, and the T+30 refund guarantee is the trust mechanism that makes blind buying rational for an agent.
 
+## 2026-08-15 — v0 prototype built (`cite-mcp/`)
+
+Working MCP server over the full 9,453-site inventory: `search_sites` / `get_site` / `estimate` / `inventory_stats`, blind placements enforced in code (field whitelist + leak assertion + brand-scrubbed content summaries), Cite Score v0 computed at import, listed prices derived (margin internal). Content enrichment added to the data model (`site_content`: summary, writes_about, recent titles — anonymized) so an agent can tell what kind of post a site would take. Publisher data (CSV/DB) stays gitignored — code only in the repo. Demo transcript verified end to end in-session.
+
+**Asks for the Shortlist team** (fields the sheet doesn't carry):
+- per-site link attribute (dofollow / sponsored) — mandatory before launch
+- max links per post, turnaround SLA
+- order history → `placements` table (what's already placed where)
+
 ## Still open
 
 1. **Domain + trademark check for "Cite"** (§13.1) — cheap, blocks all public naming; do now.

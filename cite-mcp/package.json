@@ -1,0 +1,24 @@
+{
+  "name": "cite-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cite v0 — agent-native link placement marketplace MCP server (prototype)",
+  "type": "module",
+  "scripts": {
+    "import": "tsx src/import.ts",
+    "enrich": "tsx src/enrich.ts",
+    "server": "tsx src/server.ts",
+    "demo": "tsx scripts/demo.mts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "better-sqlite3": "^11.9.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

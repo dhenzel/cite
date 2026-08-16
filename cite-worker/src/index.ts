@@ -194,7 +194,7 @@ function rpcResult(id: unknown, result: unknown) {
 async function handleMcp(req: Request): Promise<Response> {
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'POST JSON-RPC to this endpoint (MCP Streamable HTTP)' }), {
-      status: 405, headers: { 'content-type': 'application/json', allow: 'POST' },
+      status: 405, headers: { 'content-type': 'application/json', allow: 'POST', ...CORS },
     });
   }
   let body: { id?: unknown; method?: string; params?: Record<string, unknown> };
@@ -211,7 +211,7 @@ async function handleMcp(req: Request): Promise<Response> {
     }));
   }
   if (method === 'notifications/initialized' || method?.startsWith('notifications/')) {
-    return new Response(null, { status: 202 });
+    return new Response(null, { status: 202, headers: CORS });
   }
   if (method === 'tools/list') return json(rpcResult(id, { tools }));
   if (method === 'tools/call') {
@@ -224,21 +224,35 @@ async function handleMcp(req: Request): Promise<Response> {
   return json({ jsonrpc: '2.0', id: id ?? null, error: { code: -32601, message: `Method not found: ${method}` } }, 200);
 }
 
+// CORS: claude.ai / browser-based MCP clients preflight and read cross-origin.
+const CORS = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-methods': 'GET, POST, OPTIONS',
+  'access-control-allow-headers': 'content-type, mcp-protocol-version, mcp-session-id, authorization',
+};
+
 const json = (payload: unknown, status = 200) =>
-  new Response(JSON.stringify(payload), { status, headers: { 'content-type': 'application/json' } });
+  new Response(JSON.stringify(payload), { status, headers: { 'content-type': 'application/json', ...CORS } });
 
 export default {
   async fetch(req: Request): Promise<Response> {
     const url = new URL(req.url);
+    if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
     if (url.pathname === '/mcp') return handleMcp(req);
     if (url.pathname === '/health') return json({ ok: true, sites: SITES.length });
-    return new Response(
-      `Cite v0 — agent-native link placement inventory (free read tier)\n\n` +
-      `MCP endpoint (Streamable HTTP): POST ${url.origin}/mcp\n` +
-      `Connect from Claude Code:  claude mcp add --transport http cite ${url.origin}/mcp\n\n` +
-      `Tools: search_sites, get_site, estimate, inventory_stats\n` +
-      `${SITES.length} purchasable sites. Handles are anonymized — domains are revealed only at delivery.\n`,
-      { headers: { 'content-type': 'text/plain; charset=utf-8' } },
-    );
+    if (url.pathname === '/') {
+      return new Response(
+        `Cite v0 — agent-native link placement inventory (free read tier)\n\n` +
+        `MCP endpoint (Streamable HTTP): POST ${url.origin}/mcp\n` +
+        `Connect from Claude Code:  claude mcp add --transport http cite ${url.origin}/mcp\n\n` +
+        `Tools: search_sites, get_site, estimate, inventory_stats\n` +
+        `${SITES.length} purchasable sites. Handles are anonymized — domains are revealed only at delivery.\n`,
+        { headers: { 'content-type': 'text/plain; charset=utf-8', ...CORS } },
+      );
+    }
+    // Everything else — including /.well-known/oauth-* discovery probes — must
+    // 404 cleanly. A 200 here makes MCP clients believe this server has an
+    // OAuth sign-in service and their dynamic client registration then fails.
+    return json({ error: 'NOT_FOUND', path: url.pathname }, 404);
   },
 };

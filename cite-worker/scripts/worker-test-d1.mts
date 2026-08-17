@@ -348,7 +348,10 @@ assert(userRow.sub === 'engine-user-1' && userRow.email === 'ops@shortlist.io', 
 r = await fs2('/admin', { headers: { cookie } });
 assert((await r.text()).includes('operator console'), 'session opens the console');
 r = await fs2('/admin/api/sites?q=secret', { headers: { cookie } });
+const sitesPayload = await r.json();
 assert(r.status === 200, 'session authorises the admin API');
+assert(Array.isArray(sitesPayload.sites) && sitesPayload.sites.length > 0,
+  'admin API returns actual rows to an SSO session');
 
 // engine identity uses the same token from sign-in
 r = await fs2('/admin/api/engine/me', { headers: { cookie } });

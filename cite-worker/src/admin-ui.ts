@@ -259,7 +259,7 @@ function toast(msg, err) {
   t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 2600);
 }
 async function whoami() {
-  const r = await fetch('/admin/api/engine/me', { headers: hdrs() });
+  const r = await fetch('/admin/api/engine/me', { headers: hdrs(), signal: AbortSignal.timeout(8000) });
   if (r.status === 401) { $('whoami').innerHTML = '<span>Shortlist session expired — <a href="/auth/login">sign in again</a></span>'; return; }
   const d = await r.json();
   if (d.error === 'NO_ENGINE_TOKEN' && d.mode === 'operator_token') {
@@ -279,7 +279,13 @@ async function whoami() {
 
 async function engFetch(path, target, render) {
   $(target).innerHTML = '<div class="empty">Loading…</div>';
-  const r = await fetch(path, { headers: hdrs() });
+  let r;
+  try {
+    r = await fetch(path, { headers: hdrs(), signal: AbortSignal.timeout(8000) });
+  } catch (e) {
+    $(target).innerHTML = '<div class="banner">Shortlist did not respond in time.</div>';
+    return;
+  }
   if (r.status === 401) {
     $(target).innerHTML = '<div class="banner err">Your Shortlist session expired. <a href="/auth/login">Sign in again</a>.</div>';
     return;
@@ -400,8 +406,23 @@ async function revokeKey(masked) {
   toast('key revoked'); keys();
 }
 
+function showError(target, message, retry) {
+  const el = $(target);
+  if (!el) return;
+  el.innerHTML = '<div class="banner err">' + esc(message)
+    + (retry ? ' <button class="copy" onclick="' + retry + '">Retry</button>' : '') + '</div>';
+}
+
+// Inventory is why this page exists, so it loads first and nothing else can
+// block it: each step is isolated, and a failure says so instead of leaving
+// the table blank.
 async function boot() {
-  await whoami(); await stats(); await load(1);
+  load(1).catch(e => showError('rows', 'Could not load inventory: ' + (e && e.message || e), 'load(1)'));
+  stats().catch(e => showError('stats', 'Could not load totals: ' + (e && e.message || e), 'stats()'));
+  whoami().catch(e => {
+    const el = $('whoami');
+    if (el) el.innerHTML = '<span class="sub">Shortlist status unavailable</span> <a href="/auth/logout">Sign out</a>';
+  });
 }
 async function stats() {
   const s = await (await fetch('/admin/api/stats', { headers: hdrs() })).json();
@@ -484,6 +505,11 @@ async function analytics() {
     '');
 }
 
+function resetFilters() {
+  for (const id of ['q','fniche','fstatus','fcost','fmode']) { const el = $(id); if (el) el.value = ''; }
+  load(1);
+}
+
 async function load(p) {
   page = Math.max(1, p || 1);
   const u = new URLSearchParams({ page });
@@ -497,7 +523,10 @@ async function load(p) {
   const d = await r.json();
   $('pageinfo').textContent = 'page ' + d.page + ' — ' + d.total + ' sites';
   const niches = new Set([...$('fniche').options].map(o => o.value));
-  $('rows').innerHTML = d.sites.map(rowHtml).join('');
+  $('rows').innerHTML = (d.sites && d.sites.length)
+    ? d.sites.map(rowHtml).join('')
+    : '<tr><td colspan="14" class="empty">No sites match these filters. '
+      + '<button class="copy" onclick="resetFilters()">Reset filters</button></td></tr>';
   d.sites.forEach(s => { if (s.niche && !niches.has(s.niche)) { const o = document.createElement('option'); o.textContent = s.niche; $('fniche').appendChild(o); niches.add(s.niche); } });
 }
 const esc = (s) => (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -514,15 +543,15 @@ function rowHtml(s) {
     '<td class="num">' + (s.dr ?? '–') + '</td>' +
     '<td class="num">' + (s.da ?? '–') + '</td>' +
     '<td>' + esc(s.traffic_band ?? '–') + '</td>' +
-    '<td class="num"><input type="number" value="' + (s.seller_price ?? '') + '" onchange="patch(this,\\'seller_price\\',parseFloat(this.value))"></td>' +
-    '<td class="num"><input type="number" step="0.1" value="' + (s.markup ?? 1.6) + '" onchange="patch(this,\\'markup\\',parseFloat(this.value))"></td>' +
+    '<td class="num"><input type="number" data-field="seller_price" data-kind="float" value="' + (s.seller_price ?? '') + '"></td>' +
+    '<td class="num"><input type="number" step="0.1" data-field="markup" data-kind="float" value="' + (s.markup ?? 1.6) + '"></td>' +
     '<td class="num" data-col="listed">' + (s.listed_price != null ? '$' + s.listed_price : '–') + '</td>' +
     '<td class="num ' + mclass + '" data-col="margin">' + margin + '</td>' +
-    '<td><select onchange="patch(this,\\'acquisition_mode\\',this.value)">' + modes.map(a => '<option' + (a === s.acquisition_mode ? ' selected' : '') + '>' + a + '</option>').join('') + '</select>' +
+    '<td><select data-field="acquisition_mode">' + modes.map(a => '<option' + (a === s.acquisition_mode ? ' selected' : '') + '>' + a + '</option>').join('') + '</select>' +
       (s.cost_type === 'free' ? '<div class="sub">free</div>' : '') + '</td>' +
-    '<td><select onchange="patch(this,\\'link_attribute\\',this.value)">' + attrs.map(a => '<option' + (a === s.link_attribute ? ' selected' : '') + '>' + a + '</option>').join('') + '</select></td>' +
-    '<td class="num"><input type="number" value="' + (s.max_links_per_post ?? '') + '" onchange="patch(this,\\'max_links_per_post\\',this.value===\\'\\'?null:parseInt(this.value))"></td>' +
-    '<td><select onchange="patch(this,\\'status\\',this.value)">' + stats_.map(a => '<option' + (a === s.status ? ' selected' : '') + '>' + a + '</option>').join('') + '</select></td>' +
+    '<td><select data-field="link_attribute">' + attrs.map(a => '<option' + (a === s.link_attribute ? ' selected' : '') + '>' + a + '</option>').join('') + '</select></td>' +
+    '<td class="num"><input type="number" data-field="max_links_per_post" data-kind="int" value="' + (s.max_links_per_post ?? '') + '"></td>' +
+    '<td><select data-field="status">' + stats_.map(a => '<option' + (a === s.status ? ' selected' : '') + '>' + a + '</option>').join('') + '</select></td>' +
     '</tr>';
 }
 async function patch(el, field, value) {
@@ -548,6 +577,18 @@ async function addSite() {
   if (!r.ok) { toast(d.error || 'add failed', true); return; }
   toast('added ' + d.domain); load(1); stats();
 }
+// One listener for every editable cell — inline handlers needed escaping that
+// was easy to get wrong inside a template literal.
+document.getElementById('rows').addEventListener('change', (ev) => {
+  const el = ev.target;
+  const field = el && el.dataset && el.dataset.field;
+  if (!field) return;
+  let value = el.value;
+  if (el.dataset.kind === 'float') value = value === '' ? null : parseFloat(value);
+  else if (el.dataset.kind === 'int') value = value === '' ? null : parseInt(value, 10);
+  patch(el, field, value);
+});
+
 boot();
 </script>
 </body>

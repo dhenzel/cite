@@ -1,7 +1,7 @@
 // Sign-in screen (SPEC §18). Shown at /admin when there is no session — one
 // button, no password: identity comes from the Shortlist Context Engine.
-export function signInPage(opts: { error?: string; configured?: boolean } = {}): string {
-  const { error, configured = true } = opts;
+export function signInPage(opts: { error?: string; configured?: boolean; tokenFallback?: boolean } = {}): string {
+  const { error, configured = true, tokenFallback = false } = opts;
   const esc = (s: string) => s.replace(/[&<>"']/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
   return `<!doctype html>
@@ -33,6 +33,13 @@ export function signInPage(opts: { error?: string; configured?: boolean } = {}):
          padding:12px 14px; border-radius:0 8px 8px 0; margin:0 0 20px; font-size:14px; }
   .foot { color:var(--muted); font-size:12.5px; margin:20px 0 0; }
   code { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12.5px; }
+  .fallback { margin-top:22px; border-top:1px solid var(--line); padding-top:16px; }
+  .fallback summary { cursor:pointer; color:var(--muted); font-size:13.5px; }
+  .fallback form { display:flex; gap:8px; margin-top:12px; }
+  .fallback input { flex:1; min-width:0; padding:9px 11px; border-radius:8px; border:1px solid var(--line);
+                    background:var(--bg); color:var(--ink); font:inherit; }
+  .fallback button { padding:9px 14px; border-radius:8px; border:1px solid var(--line);
+                     background:var(--bg); color:var(--ink); font:inherit; cursor:pointer; }
 </style>
 </head>
 <body>
@@ -44,6 +51,14 @@ export function signInPage(opts: { error?: string; configured?: boolean } = {}):
       ? `<a class="btn" href="/auth/login">Sign in with Shortlist</a>
          <p class="foot">Uses your Shortlist Context Engine account. The first time, you'll be asked to approve what this app may read.</p>`
       : `<p class="foot">Sign-in isn't configured on this deployment yet. Set <code>OIDC_CLIENT_SECRET</code> and the related variables, then reload.</p>`}
+    ${tokenFallback ? `<details class="fallback">
+      <summary>Use the operator token instead</summary>
+      <form method="get" action="/admin">
+        <input type="password" name="token" placeholder="operator token" autocomplete="off">
+        <button type="submit">Open console</button>
+      </form>
+      <p class="foot">Opens inventory and pricing without a Shortlist sign-in. Shortlist data stays unavailable in this mode.</p>
+    </details>` : ''}
   </div>
 </body>
 </html>`;
@@ -217,7 +232,12 @@ async function whoami() {
   const r = await fetch('/admin/api/engine/me', { headers: hdrs() });
   if (r.status === 401) { $('whoami').innerHTML = '<span>Shortlist session expired — <a href="/auth/login">sign in again</a></span>'; return; }
   const d = await r.json();
-  if (d.error) { $('whoami').innerHTML = '<span>Signed in · Shortlist data unavailable</span><a href="/auth/logout">Sign out</a>'; return; }
+  if (d.error === 'NO_ENGINE_TOKEN' && d.mode === 'operator_token') {
+    $('whoami').innerHTML = '<span><b>Operator token</b> · Shortlist not connected</span>'
+      + '<a href="/auth/login">Sign in with Shortlist</a> <a href="/auth/logout">Sign out</a>';
+    window.__tokenMode = true; return;
+  }
+  if (d.error) { $('whoami').innerHTML = '<span>Signed in · Shortlist data unavailable</span> <a href="/auth/logout">Sign out</a>'; return; }
   const who = (d.user && (d.user.name || d.user.email)) || 'signed in';
   const eng = (d.engine && d.engine.display_name) || 'Shortlist';
   const abil = (d.abilities || []).slice(0, 6).map(a => '<span class="abil">' + esc(a) + '</span>').join(' ');
@@ -253,6 +273,13 @@ const engLink = (url, label) => url
   ? '<a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(label) + '</a>' : esc(label);
 
 function engine() {
+  if (window.__tokenMode) {
+    const msg = '<div class="banner">You are signed in with the operator token, so Shortlist data is not available. '
+      + '<a href="/auth/login">Sign in with Shortlist</a> to load it.</div>';
+    $('e_head').innerHTML = msg; $('e_recent').innerHTML = ''; $('e_signals').innerHTML = ''; $('e_search').innerHTML = '';
+    return;
+  }
+  $('e_head').innerHTML = '';
   engFetch('/admin/api/engine/recent', 'e_recent', d => {
     const items = (d.data && (d.data.results || d.data.entities || d.data)) || [];
     const arr = Array.isArray(items) ? items.slice(0, 12) : [];

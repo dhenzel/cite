@@ -87,6 +87,14 @@ Operator console moved from a shared bearer token to **"Sign in with Shortlist"*
 - Redirect URI to register: `https://cite-mcp.d-henzel.workers.dev/auth/callback`.
 - Engine endpoints are unreachable from the build sandbox, so the flow is verified against a stubbed issuer + stubbed engine (real PKCE, real JWKS signature validation). First live sign-in is David's.
 
+## 2026-08-17 — break-glass console access (temporary)
+
+Shortlist sign-in currently fails at the token exchange with `invalid_client` ("Client secret missing or invalid"). Diagnosis: the authorization step succeeds, so the client id is right; both `client_secret_post` and `client_secret_basic` are attempted, so transport is not the cause — **the client secret stored in the Worker is wrong**, and the app registration holding the correct one has not been located yet.
+
+Because the SSO change had removed `ADMIN_TOKEN` as a way into `/admin`, that left nobody able to open the console. Added a flagged fallback: `GET /admin?token=<ADMIN_TOKEN>` (or the "Use the operator token instead" disclosure on the sign-in page) mints a session with no engine access token — inventory and pricing work, Shortlist panels say plainly that they need a Shortlist sign-in. Controlled by `ALLOW_TOKEN_CONSOLE`, currently `"true"`.
+
+**Close this once sign-in works:** set `ALLOW_TOKEN_CONSOLE = "false"` and redeploy. Diagnostics live at `/auth/debug` (ADMIN_TOKEN-gated): advertised auth methods, the method chosen, and the stored secret's length / whitespace flag / SHA-256 prefix — no secret is printed.
+
 ## Still open
 
 1. **Domain + trademark check for "Cite"** (§13.1) — cheap, blocks all public naming; do now.

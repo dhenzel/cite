@@ -12,7 +12,8 @@ import { ADMIN_HTML, signInPage } from './admin-ui.js';
 import { buildAuthUrl, handleCallback, describeOidcFailure, diagnostics, OidcNotConfigured, OidcError } from './oidc.js';
 import {
   readSession, createSession, destroySession, upsertUser, isAdmin,
-  clearCookieHeader, markEngineUnauthorized, type Session,
+  clearCookieHeader, markEngineUnauthorized, createTokenSession,
+  tokenConsoleAllowed, TOKEN_SUB, type Session,
 } from './session.js';
 import {
   probe, cachedCall, listTools, pickTool,
@@ -29,6 +30,7 @@ export interface Env {
   OIDC_REDIRECT_URI?: string;
   ENGINE_MCP_URL?: string;
   SESSION_SECRET?: string;       // secret — signs session cookies
+  ALLOW_TOKEN_CONSOLE?: string;  // "false" closes the operator-token fallback
   CITE_ADMIN_ABILITY?: string;   // default '*:read'
   CITE_ADMIN_EMAILS?: string;    // comma-separated allowlist override
 }
@@ -481,14 +483,19 @@ async function handleMcp(req: Request, env: Env): Promise<Response> {
 }
 
 // ---------- operator console (SPEC §16) ----------
+/** Timing-safe token comparison, shared by header auth and the ?token= route. */
+function tokenMatches(given: string, expected: string): boolean {
+  if (given.length !== expected.length) return false;
+  let diff = 0;
+  for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ given.charCodeAt(i);
+  return diff === 0;
+}
+
 function authorized(req: Request, env: Env): boolean {
   const token = env.ADMIN_TOKEN;
   if (!token) return false; // no secret configured → admin surface disabled
   const given = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? '';
-  if (given.length !== token.length) return false;
-  let diff = 0;
-  for (let i = 0; i < token.length; i++) diff |= token.charCodeAt(i) ^ given.charCodeAt(i);
-  return diff === 0;
+  return tokenMatches(given, token);
 }
 
 const EDITABLE = ['seller_price', 'markup', 'status', 'link_attribute', 'max_links_per_post',
@@ -778,7 +785,13 @@ const html = (body: string, status = 200) =>
 // that cannot read signals still gets the rest of the page.
 async function handleEngineApi(req: Request, env: Env, path: string, session: Session): Promise<Response> {
   if (!session.access_token) {
-    return json({ error: 'NO_ENGINE_TOKEN', message: 'Sign in with Shortlist to load engine data.' }, 401);
+    // Break-glass token session: the console works, Shortlist data does not.
+    return json({
+      error: 'NO_ENGINE_TOKEN',
+      mode: session.sub === TOKEN_SUB ? 'operator_token' : 'no_token',
+      message: 'Signed in with the operator token — Shortlist data needs a Shortlist sign-in.',
+      sign_in: '/auth/login',
+    }, 200);
   }
   const url = new URL(req.url);
   const degrade = (e: unknown) => {
@@ -1142,13 +1155,24 @@ export default {
     if (url.pathname.startsWith('/auth/')) return handleAuth(req, env, url.pathname);
 
     if (url.pathname === '/admin') {
-      // Humans sign in with Shortlist. The shared ADMIN_TOKEN is no longer a
-      // way into the web console — it remains only for /admin/mcp, which an
-      // agent cannot get through a browser flow.
+      // Humans sign in with Shortlist. The operator token remains as a
+      // break-glass into the console (ALLOW_TOKEN_CONSOLE="false" closes it)
+      // so a broken engine can never lock the team out of their own inventory.
+      const supplied = url.searchParams.get('token');
+      if (supplied && tokenConsoleAllowed(env) && env.ADMIN_TOKEN && tokenMatches(supplied, env.ADMIN_TOKEN)) {
+        return new Response(null, {
+          status: 302,
+          headers: { location: '/admin', 'set-cookie': await createTokenSession(env) },
+        });
+      }
       const session = await readSession(req, env);
       if (!session?.is_admin) {
-        return new Response(signInPage({ configured: !!env.OIDC_CLIENT_ID && !!env.OIDC_CLIENT_SECRET }), {
-          status: session ? 403 : 200,
+        return new Response(signInPage({
+          configured: !!env.OIDC_CLIENT_ID && !!env.OIDC_CLIENT_SECRET,
+          error: supplied ? 'That operator token is not valid.' : undefined,
+          tokenFallback: tokenConsoleAllowed(env) && !!env.ADMIN_TOKEN,
+        }), {
+          status: session || supplied ? 403 : 200,
           headers: { 'content-type': 'text/html; charset=utf-8' },
         });
       }

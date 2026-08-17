@@ -82,6 +82,33 @@ export async function createSession(
   return cookieHeader(id, mac, SESSION_TTL_DAYS * 86400);
 }
 
+/**
+ * Break-glass: a session created from the operator token rather than a
+ * Shortlist sign-in. Carries no engine access token, so engine panels degrade
+ * honestly instead of pretending. Disabled by ALLOW_TOKEN_CONSOLE="false".
+ */
+export const TOKEN_SUB = 'local:admin-token';
+
+export function tokenConsoleAllowed(env: Env): boolean {
+  return env.ALLOW_TOKEN_CONSOLE !== 'false';
+}
+
+export async function createTokenSession(env: Env): Promise<string> {
+  await env.DB.prepare(`
+    INSERT INTO users (sub, email, name, first_seen, last_seen, last_abilities)
+    VALUES (?, NULL, 'Operator token', datetime('now'), datetime('now'), '[]')
+    ON CONFLICT(sub) DO UPDATE SET last_seen = datetime('now')
+  `).bind(TOKEN_SUB).run();
+  const id = crypto.randomUUID().replace(/-/g, '');
+  await env.DB.prepare(`
+    INSERT INTO sessions (id, sub, access_token, access_expires_at, abilities, is_admin,
+                          engine_unauthorized, created_at, last_seen)
+    VALUES (?, ?, NULL, NULL, '[]', 1, 0, datetime('now'), datetime('now'))
+  `).bind(id, TOKEN_SUB).run();
+  const mac = await sign(id, sessionSecret(env));
+  return cookieHeader(id, mac, SESSION_TTL_DAYS * 86400);
+}
+
 export async function readSession(req: Request, env: Env): Promise<Session | null> {
   const raw = req.headers.get('cookie') ?? '';
   const match = raw.match(new RegExp(`(?:^|;\\s*)${COOKIE}=([^;]+)`));

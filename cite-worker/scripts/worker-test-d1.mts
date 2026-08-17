@@ -301,11 +301,12 @@ const fs2 = (path: string, init?: RequestInit) => worker.fetch(new Request(`http
 r = await fs2('/admin');
 let page = await r.text();
 assert(r.status === 200 && page.includes('Sign in with Shortlist'), 'console shows the Sign in with Shortlist button');
-assert(!page.includes('operator token'), 'token prompt is gone from the console');
+assert(page.indexOf('Sign in with Shortlist') < page.indexOf('operator token'),
+  'SSO is the primary path; the operator token is a secondary fallback');
 
 // the old shared token must no longer open the web console
 r = await fs2('/admin', { headers: { authorization: 'Bearer test-token-123' } });
-assert((await r.text()).includes('Sign in with Shortlist'), 'ADMIN_TOKEN no longer opens the web console');
+assert((await r.text()).includes('Sign in with Shortlist'), 'a bearer header alone does not open the web console');
 
 // login redirect: PKCE S256 + state + nonce + exact scopes
 r = await fs2('/auth/login');
@@ -425,3 +426,33 @@ assert(page.includes('client authentication failed'), 'error_description is show
 tokenEndpointMode = 'ok';
 
 console.log('\nall SSO checks passed');
+
+// ---- break-glass operator-token console ----
+const bgEnv = { ...ssoEnv, ALLOW_TOKEN_CONSOLE: 'true' } as Env;
+const fsb = (path: string, init?: RequestInit) => worker.fetch(new Request(`https://cite.test${path}`, init), bgEnv);
+
+r = await fsb('/admin');
+assert((await r.text()).includes('Use the operator token instead'), 'sign-in page offers the token fallback');
+
+r = await fsb('/admin?token=wrong-token');
+assert(r.status === 403 && (await r.text()).includes('not valid'), 'wrong operator token refused');
+
+r = await fsb('/admin?token=test-token-123');
+assert(r.status === 302, 'correct operator token opens a session');
+const bgCookie = r.headers.get('set-cookie')!.split(';')[0];
+r = await fsb('/admin', { headers: { cookie: bgCookie } });
+assert((await r.text()).includes('operator console'), 'token session reaches the console');
+r = await fsb('/admin/api/sites', { headers: { cookie: bgCookie } });
+assert(r.status === 200, 'token session can read inventory');
+r = await fsb('/admin/api/engine/me', { headers: { cookie: bgCookie } });
+const bgMe = await r.json();
+assert(bgMe.error === 'NO_ENGINE_TOKEN' && bgMe.mode === 'operator_token', 'engine panels report token mode honestly');
+
+// closing the fallback actually closes it
+const closedEnv = { ...ssoEnv, ALLOW_TOKEN_CONSOLE: 'false' } as Env;
+r = await worker.fetch(new Request('https://cite.test/admin?token=test-token-123'), closedEnv);
+assert(r.status !== 302, 'ALLOW_TOKEN_CONSOLE=false refuses the token');
+r = await worker.fetch(new Request('https://cite.test/admin'), closedEnv);
+assert(!(await r.text()).includes('Use the operator token instead'), 'fallback UI hidden when disabled');
+
+console.log('\nall break-glass checks passed');

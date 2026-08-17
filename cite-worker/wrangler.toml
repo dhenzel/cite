@@ -24,3 +24,7 @@ ENGINE_MCP_URL = "https://shortlist.on-relote.com/mcp"
 # Who may open the console: this ability, OR an email in CITE_ADMIN_EMAILS.
 CITE_ADMIN_ABILITY = "*:read"
 CITE_ADMIN_EMAILS = ""
+# Break-glass: lets the operator token open the web console, so a broken engine
+# can never lock the team out of their own inventory. Set to "false" once
+# Shortlist sign-in is confirmed working.
+ALLOW_TOKEN_CONSOLE = "true"

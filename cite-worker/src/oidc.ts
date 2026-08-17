@@ -44,6 +44,39 @@ export class OidcNotConfigured extends Error {
 }
 export class OidcError extends Error {}
 
+/**
+ * Client authentication method, taken from the discovery document. Defaults to
+ * client_secret_basic (the OAuth default) when the engine advertises nothing.
+ */
+function pickClientAuth(as: oauth.AuthorizationServer, secret: string): oauth.ClientAuth {
+  const supported = as.token_endpoint_auth_methods_supported ?? [];
+  if (supported.includes('client_secret_post')) return oauth.ClientSecretPost(secret);
+  if (supported.includes('client_secret_basic')) return oauth.ClientSecretBasic(secret);
+  if (supported.length === 0) return oauth.ClientSecretBasic(secret);
+  if (supported.includes('none')) return oauth.None();
+  // Something exotic (private_key_jwt etc.) — try basic and let the error speak.
+  return oauth.ClientSecretBasic(secret);
+}
+
+/** Turn a library error into something a human can act on. */
+export function describeOidcFailure(e: unknown): string {
+  if (e instanceof oauth.ResponseBodyError) {
+    const hint = e.error === 'invalid_client'
+      ? ' — the client id or secret is wrong, or the engine expects a different client authentication method.'
+      : e.error === 'invalid_grant'
+      ? ' — usually a redirect_uri that does not exactly match the one registered, or a reused/expired code.'
+      : e.error === 'invalid_scope'
+      ? ' — the engine refused one of the requested scopes.'
+      : '';
+    return `The engine rejected the token request: ${e.error}${e.error_description ? ` (${e.error_description})` : ''}${hint}`;
+  }
+  if (e instanceof oauth.AuthorizationResponseError) {
+    return `The engine refused the sign-in: ${e.error}${e.error_description ? ` (${e.error_description})` : ''}`;
+  }
+  if (e instanceof OidcError || e instanceof OidcNotConfigured) return e.message;
+  return `Sign-in failed: ${(e as Error).message}`;
+}
+
 /** Discovery document, cached in D1 so we don't refetch on every sign-in. */
 async function discover(env: Env, cfg: OidcConfig): Promise<oauth.AuthorizationServer> {
   const key = `oidc_discovery:${cfg.issuer}`;
@@ -123,7 +156,9 @@ export async function handleCallback(env: Env, requestUrl: URL): Promise<SignInR
   if (!flow) throw new OidcError('This sign-in link has expired or was already used. Try again.');
 
   const client: oauth.Client = { client_id: cfg.clientId };
-  const clientAuth = oauth.ClientSecretPost(cfg.clientSecret);
+  // Honour what the engine advertises rather than assuming a method — sending
+  // the secret the wrong way is an `invalid_client` with no useful message.
+  const clientAuth = pickClientAuth(as, cfg.clientSecret);
 
   // Throws if the engine returned an error, or if state does not match.
   const params = oauth.validateAuthResponse(as, client, requestUrl, flow.state);

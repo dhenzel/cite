@@ -210,6 +210,8 @@ async function makeIdToken(claims: Record<string, unknown>) {
   return `${header}.${payload}.${b64u(sig)}`;
 }
 
+let tokenEndpointMode: 'ok' | 'invalid_client' = 'ok';
+let lastTokenAuthHeader = '';
 let engineAbilities = ['*:read', 'entities:read', 'signals:read'];
 let engineMode: 'ok' | 'unauthorized' | 'scope_denied' = 'ok';
 let engineCalls = 0;
@@ -244,6 +246,11 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       { headers: { 'content-type': 'application/json' } });
   }
   if (url === `${ISSUER}/token`) {
+    lastTokenAuthHeader = (init?.headers as Record<string, string>)?.authorization ?? '';
+    if (tokenEndpointMode === 'invalid_client') {
+      return new Response(JSON.stringify({ error: 'invalid_client', error_description: 'client authentication failed' }),
+        { status: 401, headers: { 'content-type': 'application/json' } });
+    }
     const form = new URLSearchParams(init!.body as string);
     if (!form.get('code_verifier')) return new Response(JSON.stringify({ error: 'invalid_request' }), { status: 400, headers: { 'content-type': 'application/json' } });
     const now = Math.floor(Date.now() / 1000);
@@ -326,6 +333,8 @@ const setCookie = r.headers.get('set-cookie')!;
 assert(/HttpOnly/.test(setCookie) && /Secure/.test(setCookie) && /SameSite=Lax/.test(setCookie), 'session cookie is hardened');
 const cookie = setCookie.split(';')[0];
 
+assert(lastTokenAuthHeader === '', 'client auth followed discovery (client_secret_post, not basic)');
+
 // state is single-use
 r = await fs2(`/auth/callback?code=abc&state=${goodState}`);
 assert(r.status === 400, 'state cannot be replayed');
@@ -402,5 +411,16 @@ assert(r.status === 401, 'destroyed session no longer authorises');
 const bareEnv = { DB: d1, ADMIN_TOKEN: 'test-token-123' } as Env;
 r = await worker.fetch(new Request('https://cite.test/auth/login'), bareEnv);
 assert(r.status === 503 && (await r.text()).includes("isn't configured"), 'missing OIDC config fails clearly');
+
+// an OAuth error from the token endpoint must be reported, not swallowed
+tokenEndpointMode = 'invalid_client';
+r = await fs2('/auth/login');
+lastNonce = new URL(r.headers.get('location')!).searchParams.get('nonce')!;
+const errState = new URL(r.headers.get('location')!).searchParams.get('state')!;
+r = await fs2(`/auth/callback?code=abc&state=${errState}`);
+page = await r.text();
+assert(page.includes('invalid_client') && page.includes('client authentication method'),
+  'token-endpoint errors are surfaced with an actionable hint');
+tokenEndpointMode = 'ok';
 
 console.log('\nall SSO checks passed');

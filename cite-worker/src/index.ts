@@ -9,7 +9,7 @@
 //
 // Connect:  claude mcp add --transport http cite https://<worker-url>/mcp
 import { ADMIN_HTML, signInPage } from './admin-ui.js';
-import { buildAuthUrl, handleCallback, OidcNotConfigured, OidcError } from './oidc.js';
+import { buildAuthUrl, handleCallback, describeOidcFailure, OidcNotConfigured, OidcError } from './oidc.js';
 import {
   readSession, createSession, destroySession, upsertUser, isAdmin,
   clearCookieHeader, markEngineUnauthorized, type Session,
@@ -747,9 +747,10 @@ async function handleAuth(req: Request, env: Env, path: string): Promise<Respons
         headers: { location: result.redirectTo, 'set-cookie': cookie },
       });
     } catch (e) {
-      const msg = e instanceof OidcError || e instanceof OidcNotConfigured
-        ? e.message : `Sign-in failed: ${(e as Error).message}`;
-      return html(signInPage({ error: msg, configured: !(e instanceof OidcNotConfigured) }), 400);
+      return html(signInPage({
+        error: describeOidcFailure(e),
+        configured: !(e instanceof OidcNotConfigured),
+      }), 400);
     }
   }
 

@@ -50,6 +50,7 @@ Owner contact information is held on `Site` and is **never exposed through any A
 | `cite_score` | int 0–100 | derived composite, see §5 |
 | `topic_taxonomy` | string[] + vector | tags plus an embedding for relevance scoring |
 | `price_tiers` | object[] | `{link_type, word_count_band, seller_price, listed_price}` — `seller_price` never published |
+| `markup` | real | per-site multiplier (default 1.6, operator-editable in §16). `listed_price = ceil(seller_price × markup / 5) × 5`, recomputed whenever either input changes. **Private** — same class as `owner_contact`; never serialized to any buyer-facing surface |
 | `turnaround_sla_days` | int | typical publish time from acceptance |
 | `link_attributes_offered` | enum[] | `dofollow` \| `sponsored` \| `ugc` \| `nofollow` — **must be explicit per site**, see §12b |
 | `max_links_per_post` | int | typically 1–3 |
@@ -309,3 +310,20 @@ Build the shortest path that takes real money and delivers one real link.
 8. **`LiftObservation` collection starts on day one, internal only** — even with no model consuming it yet. The dataset is the moat and it only exists if you start writing rows before you need them.
 
 **Explicitly not in v1:** lift-weighted allocation, agent-assisted negotiation drafts, `cancel_order` beyond the trivial case, T+90 verification, any customer-facing lift reporting.
+
+---
+
+## 16. Operator console (admin backend)
+
+*Added 2026-08-15.* An authenticated, operator-only surface for administrating the inventory — never linked from buyer-facing pages, never listed on MCP directories.
+
+**v1 scope:**
+- **Inventory CRUD** — add, edit, pause, and burn sites; search and filter across the full private dataset (domain, contacts, notes included).
+- **Pricing** — per-site `seller_price` (what the publisher gets) and per-site `markup`; the console shows the computed `listed_price` and margin per site. Margin never appears on any buyer surface; the console is where it lives.
+- **Backfill workflows** — the fields the sheet never carried, editable in place: `link_attribute` (dofollow/sponsored — mandatory before public launch, §12b), `max_links_per_post`, `turnaround_sla_days`.
+- **Content review** — inspect and correct enrichment output (summaries must stay brand-scrubbed, §11).
+- **Import** — (re)load from the Shortlist sheet export.
+
+**Auth v1:** single operator bearer token held as a deployment secret. Real accounts/roles arrive with the funded tier. Aggregate margin reporting and order/outreach management land with orders (§7).
+
+**Implementation note (v0 prototype):** lives in `cite-worker/` on the same Worker as the public MCP endpoint — `/admin` (UI) + `/admin/api/*` (JSON), bearer-token-guarded, backed by the `cite-v0` D1 database, which is the working store the public tools also read. Editing a price changes what agents see immediately; no redeploys for data.

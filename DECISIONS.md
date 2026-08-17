@@ -55,6 +55,10 @@ Working MCP server over the full 9,453-site inventory: `search_sites` / `get_sit
 - max links per post, turnaround SLA
 - order history → `placements` table (what's already placed where)
 
+## 2026-08-15 — operator console + per-site markup (spec §16)
+
+David: "we need a backend where we can administrate the pages we offer… and I want to add the price that we pay and the markup we have per site." Added to the spec as §16 (operator console) and to the `Site` model as a private `markup` field (default ×1.6, per-site editable; `listed_price = ceil(seller_price × markup / 5) × 5`). Built in v0: `cite-worker` gains `/admin` (single-page UI) + `/admin/api/*` behind an `ADMIN_TOKEN` bearer secret; inventory moves from the frozen bundled JSON into the `cite-v0` D1 database, which both the admin surface (full private rows) and the public MCP tools (whitelisted fields) read — price edits are live immediately. Worker must be deployed in the same Cloudflare account as `cite-v0` (David's main account).
+
 ## Still open
 
 1. **Domain + trademark check for "Cite"** (§13.1) — cheap, blocks all public naming; do now.

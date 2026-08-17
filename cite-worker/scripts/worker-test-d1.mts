@@ -421,6 +421,7 @@ r = await fs2(`/auth/callback?code=abc&state=${errState}`);
 page = await r.text();
 assert(page.includes('invalid_client') && page.includes('client authentication method'),
   'token-endpoint errors are surfaced with an actionable hint');
+assert(page.includes('client authentication failed'), 'error_description is shown');
 tokenEndpointMode = 'ok';
 
 console.log('\nall SSO checks passed');

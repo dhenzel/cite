@@ -58,23 +58,43 @@ function pickClientAuth(as: oauth.AuthorizationServer, secret: string): oauth.Cl
   return oauth.ClientSecretBasic(secret);
 }
 
-/** Turn a library error into something a human can act on. */
+/**
+ * Turn a library error into something a human can act on.
+ *
+ * Detects by shape, not `instanceof`: oauth4webapi's error classes do not
+ * survive `instanceof` reliably once bundled, and swallowing the OAuth error
+ * code is exactly what made the first failure undiagnosable.
+ */
 export function describeOidcFailure(e: unknown): string {
-  if (e instanceof oauth.ResponseBodyError) {
-    const hint = e.error === 'invalid_client'
-      ? ' — the client id or secret is wrong, or the engine expects a different client authentication method.'
-      : e.error === 'invalid_grant'
-      ? ' — usually a redirect_uri that does not exactly match the one registered, or a reused/expired code.'
-      : e.error === 'invalid_scope'
-      ? ' — the engine refused one of the requested scopes.'
-      : '';
-    return `The engine rejected the token request: ${e.error}${e.error_description ? ` (${e.error_description})` : ''}${hint}`;
+  const err = e as {
+    error?: string; error_description?: string; status?: number;
+    cause?: unknown; message?: string;
+  };
+
+  if (typeof err?.error === 'string') {
+    const hint =
+      err.error === 'invalid_client'
+        ? ' — the client id or secret is wrong, or the engine expects a different client authentication method.'
+        : err.error === 'invalid_grant'
+        ? ' — usually a redirect_uri that does not exactly match the registered one, or a code that was already used or expired.'
+        : err.error === 'invalid_scope'
+        ? ' — the engine refused one of the requested scopes.'
+        : err.error === 'unauthorized_client'
+        ? ' — this client is not allowed to use the authorization code grant.'
+        : '';
+    const status = err.status ? ` [HTTP ${err.status}]` : '';
+    const desc = err.error_description ? ` (${err.error_description})` : '';
+    return `The engine rejected the request: ${err.error}${desc}${status}${hint}`;
   }
-  if (e instanceof oauth.AuthorizationResponseError) {
-    return `The engine refused the sign-in: ${e.error}${e.error_description ? ` (${e.error_description})` : ''}`;
-  }
+
   if (e instanceof OidcError || e instanceof OidcNotConfigured) return e.message;
-  return `Sign-in failed: ${(e as Error).message}`;
+
+  // Last resort: show whatever body came back, so the next attempt is informed.
+  let extra = '';
+  if (err?.cause && typeof err.cause === 'object') {
+    try { extra = ` — response body: ${JSON.stringify(err.cause).slice(0, 300)}`; } catch { /* ignore */ }
+  }
+  return `Sign-in failed: ${err?.message ?? String(e)}${extra}`;
 }
 
 /** Discovery document, cached in D1 so we don't refetch on every sign-in. */

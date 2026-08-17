@@ -328,7 +328,7 @@ Build the shortest path that takes real money and delivers one real link.
 - **Content review** — inspect and correct enrichment output (summaries must stay brand-scrubbed, §11).
 - **Import** — (re)load from the Shortlist sheet export.
 
-**Auth v1:** single operator bearer token held as a deployment secret. Real accounts/roles arrive with the funded tier. Aggregate margin reporting and order/outreach management land with orders (§7).
+**Auth:** humans sign in with Shortlist SSO (§18). Agents authenticate to `/admin/mcp` with a **per-person key** (`cka_…`) minted from the console's Connect tab — shown once, masked thereafter, revocable per person, and automatically dead once its owner loses console access on the engine. The shared `ADMIN_TOKEN` still works so nothing breaks mid-migration, but per-person keys are the intended path and let it be retired. Aggregate margin reporting and order/outreach management land with orders (§7).
 
 **Implementation note (v0 prototype):** lives in `cite-worker/` on the same Worker as the public MCP endpoint — `/admin` (UI) + `/admin/api/*` (JSON), bearer-token-guarded, backed by the `cite-v0` D1 database, which is the working store the public tools also read. Editing a price changes what agents see immediately; no redeploys for data.
 

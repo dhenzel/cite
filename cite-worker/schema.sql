@@ -139,3 +139,16 @@ CREATE TABLE IF NOT EXISTS engine_cache (
   expires_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_engine_cache_exp ON engine_cache(expires_at);
+
+-- Per-person keys for the admin MCP (SPEC §16). Minted from the console after
+-- a Shortlist sign-in, so every bulk edit is attributable and revocable per
+-- person instead of sharing one ADMIN_TOKEN.
+CREATE TABLE IF NOT EXISTS admin_keys (
+  key TEXT PRIMARY KEY,
+  sub TEXT NOT NULL,
+  label TEXT,
+  created_at TEXT,
+  last_used_at TEXT,
+  revoked_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_admin_keys_sub ON admin_keys(sub);

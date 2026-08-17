@@ -491,6 +491,45 @@ function tokenMatches(given: string, expected: string): boolean {
   return diff === 0;
 }
 
+export interface AdminActor {
+  kind: 'shared_token' | 'personal_key';
+  sub?: string;
+  email?: string | null;
+  key_prefix?: string;
+}
+
+/**
+ * Who is calling an admin surface: the shared ADMIN_TOKEN, or a per-person key
+ * minted from the console. A personal key stops working the moment its owner
+ * loses console access on the engine, so revocation follows the engine role.
+ */
+async function resolveAdminActor(req: Request, env: Env, pathToken?: string): Promise<AdminActor | null> {
+  const bearer = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '').trim() ?? '';
+  const candidate = (pathToken ?? '') || bearer;
+  if (!candidate) return null;
+
+  if (env.ADMIN_TOKEN && tokenMatches(candidate, env.ADMIN_TOKEN)) return { kind: 'shared_token' };
+
+  if (candidate.startsWith('cka_')) {
+    const row = (await env.DB.prepare(`
+      SELECT k.key, k.sub, k.revoked_at, u.email, u.last_abilities
+      FROM admin_keys k LEFT JOIN users u ON u.sub = k.sub
+      WHERE k.key = ?
+    `).bind(candidate).first()) as Row | null;
+    if (!row || row.revoked_at) return null;
+    const abilities = row.last_abilities ? (JSON.parse(row.last_abilities as string) as string[]) : [];
+    if (!isAdmin(env, (row.email as string) ?? null, abilities)) return null;
+    await env.DB.prepare(`UPDATE admin_keys SET last_used_at = datetime('now') WHERE key = ?`).bind(candidate).run();
+    return {
+      kind: 'personal_key',
+      sub: row.sub as string,
+      email: (row.email as string) ?? null,
+      key_prefix: candidate.slice(0, 12),
+    };
+  }
+  return null;
+}
+
 function authorized(req: Request, env: Env): boolean {
   const token = env.ADMIN_TOKEN;
   if (!token) return false; // no secret configured → admin surface disabled
@@ -601,6 +640,72 @@ async function handleAdminApi(req: Request, env: Env, path: string): Promise<Res
   // demand signal the whole free tier exists to collect (SPEC §15).
   if (path === '/admin/api/analytics' && req.method === 'GET') {
     return json(await computeAnalytics(env));
+  }
+
+  // Per-person admin MCP keys (SPEC §16). Minted only for a real Shortlist
+  // sign-in — a break-glass token session cannot create one.
+  if (path === '/admin/api/keys') {
+    const session = await readSession(req, env);
+    if (!session?.is_admin) return json({ error: 'UNAUTHORIZED', sign_in: '/auth/login' }, 401);
+
+    if (req.method === 'GET') {
+      const rows = (await env.DB.prepare(`
+        SELECT key, label, created_at, last_used_at, revoked_at FROM admin_keys
+        WHERE sub = ? ORDER BY created_at DESC
+      `).bind(session.sub).all()).results as Row[];
+      return json({
+        keys: rows.map((r) => ({
+          // Never return a whole key again — it is shown once at creation.
+          masked: `${(r.key as string).slice(0, 12)}…${(r.key as string).slice(-4)}`,
+          label: r.label,
+          created_at: r.created_at,
+          last_used_at: r.last_used_at,
+          revoked: !!r.revoked_at,
+        })),
+        mcp_url: `${new URL(req.url).origin}/admin/mcp`,
+      });
+    }
+
+    if (req.method === 'POST') {
+      if (session.sub === TOKEN_SUB) {
+        return json({
+          error: 'SSO_REQUIRED',
+          message: 'Personal keys are tied to a Shortlist account. Sign in with Shortlist first.',
+          sign_in: '/auth/login',
+        }, 403);
+      }
+      const body = (await req.json().catch(() => ({}))) as Row;
+      const key = `cka_${crypto.randomUUID().replace(/-/g, '')}`;
+      await env.DB.prepare(`
+        INSERT INTO admin_keys (key, sub, label, created_at) VALUES (?, ?, ?, datetime('now'))
+      `).bind(key, session.sub, (body.label as string) || 'admin MCP', ).run();
+      const origin = new URL(req.url).origin;
+      return json({
+        key,                       // shown once
+        mcp_url: `${origin}/admin/mcp`,
+        connect_command: `claude mcp add --transport http cite-admin ${origin}/admin/mcp --header "Authorization: Bearer ${key}"`,
+        connector_url: `${origin}/admin/mcp/${key}`,
+        note: 'Copy this now — it is not shown again. Revoke it any time from the console.',
+      }, 201);
+    }
+
+    return json({ error: 'METHOD_NOT_ALLOWED' }, 405);
+  }
+
+  // Revoke by full key or by the prefix the console displays — whole keys are
+  // never returned after creation, so the UI only ever has the prefix.
+  const revokeMatch = path.match(/^\/admin\/api\/keys\/(cka_[a-z0-9]{4,})$/);
+  if (revokeMatch && req.method === 'DELETE') {
+    const session = await readSession(req, env);
+    if (!session?.is_admin) return json({ error: 'UNAUTHORIZED', sign_in: '/auth/login' }, 401);
+    const ref = revokeMatch[1];
+    const row = (await env.DB.prepare(`
+      SELECT key FROM admin_keys WHERE sub = ? AND revoked_at IS NULL AND (key = ? OR key LIKE ?)
+    `).bind(session.sub, ref, `${ref}%`).first()) as Row | null;
+    if (!row) return json({ error: 'KEY_NOT_FOUND' }, 404);
+    await env.DB.prepare(`UPDATE admin_keys SET revoked_at = datetime('now') WHERE key = ?`)
+      .bind(row.key).run();
+    return json({ revoked: true });
   }
 
   if (path === '/admin/api/stats' && req.method === 'GET') {
@@ -1116,8 +1221,13 @@ async function runAdminTool(env: Env, req: Request, name: string, args: Row): Pr
 }
 
 async function handleAdminMcp(req: Request, env: Env, tokenFromPath?: string): Promise<Response> {
-  const ok = authorized(req, env) || (!!env.ADMIN_TOKEN && tokenFromPath === env.ADMIN_TOKEN);
-  if (!ok) return json({ error: 'UNAUTHORIZED', message: 'Send Authorization: Bearer <ADMIN_TOKEN>' }, 401);
+  const actor = await resolveAdminActor(req, env, tokenFromPath);
+  if (!actor) {
+    return json({
+      error: 'UNAUTHORIZED',
+      message: 'Send Authorization: Bearer <your personal key>. Get one from the console at /admin → Connect.',
+    }, 401);
+  }
   if (req.method !== 'POST') return json({ error: 'POST JSON-RPC to this endpoint' }, 405);
   let body: { id?: unknown; method?: string; params?: Row };
   try { body = await req.json(); } catch {

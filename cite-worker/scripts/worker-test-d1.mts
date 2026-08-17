@@ -456,3 +456,54 @@ r = await worker.fetch(new Request('https://cite.test/admin'), closedEnv);
 assert(!(await r.text()).includes('Use the operator token instead'), 'fallback UI hidden when disabled');
 
 console.log('\nall break-glass checks passed');
+
+// ---- per-person admin MCP keys ----
+// sign in properly first (cookie from the earlier allowlist flow is gone, so redo)
+r = await fs2('/auth/login');
+lastNonce = new URL(r.headers.get('location')!).searchParams.get('nonce')!;
+const keyState = new URL(r.headers.get('location')!).searchParams.get('state')!;
+r = await fs2(`/auth/callback?code=abc&state=${keyState}`);
+const ssoCookie = r.headers.get('set-cookie')!.split(';')[0];
+
+r = await fs2('/admin/api/keys', { method: 'POST', headers: { cookie: ssoCookie, 'content-type': 'application/json' },
+  body: JSON.stringify({ label: 'laptop' }) });
+const minted = await r.json();
+assert(r.status === 201 && minted.key.startsWith('cka_'), 'console mints a personal admin key');
+assert(minted.connect_command.includes('claude mcp add') && minted.connect_command.includes(minted.key),
+  'mint response includes a copy-paste connect command');
+assert(minted.connector_url.endsWith(minted.key), 'mint response includes a header-free connector URL');
+
+// the personal key authenticates the admin MCP, by header and by path
+r = await fs2('/admin/mcp', { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${minted.key}` },
+  body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) });
+assert(r.status === 200 && (await r.json()).result.tools.length === 6, 'personal key works on the admin MCP');
+r = await fs2(`/admin/mcp/${minted.key}`, { method: 'POST', headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) });
+assert(r.status === 200, 'personal key works in the URL path (for header-less connectors)');
+
+// listing masks the key and records usage
+r = await fs2('/admin/api/keys', { headers: { cookie: ssoCookie } });
+const listed = await r.json();
+assert(listed.keys.length === 1 && !JSON.stringify(listed).includes(minted.key), 'key list never returns the full key');
+assert(listed.keys[0].masked.startsWith('cka_') && listed.keys[0].last_used_at, 'list shows a masked key and last-used time');
+
+// revoke by the displayed prefix
+const prefix = listed.keys[0].masked.split('…')[0];
+r = await fs2(`/admin/api/keys/${prefix}`, { method: 'DELETE', headers: { cookie: ssoCookie } });
+assert((await r.json()).revoked === true, 'key revoked by prefix');
+r = await fs2('/admin/mcp', { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${minted.key}` },
+  body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) });
+assert(r.status === 401, 'revoked key stops working immediately');
+
+// a break-glass token session cannot mint a personal key
+r = await fsb('/admin?token=test-token-123');
+const bgCookie2 = r.headers.get('set-cookie')!.split(';')[0];
+r = await fsb('/admin/api/keys', { method: 'POST', headers: { cookie: bgCookie2, 'content-type': 'application/json' }, body: '{}' });
+assert(r.status === 403 && (await r.json()).error === 'SSO_REQUIRED', 'personal keys require a Shortlist sign-in');
+
+// the shared token still works alongside personal keys
+r = await fs2('/admin/mcp', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer test-token-123' },
+  body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) });
+assert(r.status === 200, 'shared ADMIN_TOKEN still works');
+
+console.log('\nall admin-key checks passed');

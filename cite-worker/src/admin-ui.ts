@@ -138,6 +138,13 @@ export const ADMIN_HTML = `<!doctype html>
   .banner { background:rgba(216,169,78,.10); border-left:3px solid var(--warn); color:var(--ink);
             padding:10px 14px; border-radius:0 8px 8px 0; margin:12px 0; font-size:13.5px; }
   .banner.err { background:rgba(224,118,108,.10); border-left-color:var(--bad); }
+  .prose { max-width:70ch; color:var(--ink); font-size:14px; line-height:1.6; }
+  .prose.sub { color:var(--muted); }
+  .keybox { background:var(--surface); border:1px solid var(--accent); border-radius:10px; padding:14px 16px; margin:12px 0; }
+  .keybox code, .cmd { display:block; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12.5px;
+    background:#0b0e14; color:#e8eaf0; padding:10px 12px; border-radius:7px; margin:8px 0; overflow-x:auto;
+    white-space:pre-wrap; word-break:break-all; }
+  .copy { font-size:12px; padding:5px 10px; }
 </style>
 </head>
 <body>
@@ -151,6 +158,7 @@ export const ADMIN_HTML = `<!doctype html>
     <button id="tab-inv" class="tab active" onclick="showTab('inv')">Inventory</button>
     <button id="tab-ana" class="tab" onclick="showTab('ana')">Analytics</button>
     <button id="tab-eng" class="tab" onclick="showTab('eng')">Shortlist</button>
+    <button id="tab-key" class="tab" onclick="showTab('key')">Connect</button>
   </div>
 
   <div id="pane-inv">
@@ -214,6 +222,28 @@ export const ADMIN_HTML = `<!doctype html>
       <section><h3>Recent in Shortlist</h3><div id="e_recent"></div></section>
       <section><h3>Open signals</h3><div id="e_signals"></div></section>
     </div>
+  </div>
+
+  <div id="pane-key" style="display:none">
+    <section>
+      <h3>Connect your agent to the Cite back office</h3>
+      <p class="prose">Create a personal key below, then paste one command into your terminal. After that you
+      can just talk to Claude — <em>"set link attribute to dofollow for every finance site above DR 60"</em>,
+      <em>"which sites have no price?"</em>, <em>"how many queries did we get this week?"</em> — and it edits
+      the same inventory you see in this console.</p>
+      <p class="prose sub">The key is yours alone. It carries the same access you have here, it stops working
+      if your Shortlist access is removed, and you can revoke it at any time. Don't share it — if a teammate
+      needs one, they sign in here and create their own.</p>
+      <div class="bar">
+        <input id="k_label" placeholder="What is this key for? e.g. Claude Code on my laptop" style="flex:1;min-width:240px">
+        <button class="primary" onclick="mintKey()">Create a key</button>
+      </div>
+      <div id="k_new"></div>
+      <h3>Your keys</h3>
+      <div id="k_list"></div>
+      <h3>Other ways to connect</h3>
+      <div class="prose sub" id="k_alt"></div>
+    </section>
   </div>
 </div>
 <div class="toast" id="toast"></div>
@@ -306,6 +336,70 @@ async function engSearch() {
   });
 }
 
+async function keys() {
+  const r = await fetch('/admin/api/keys', { headers: hdrs() });
+  if (r.status === 401) { location.href = '/auth/login'; return; }
+  const d = await r.json();
+  const origin = location.origin;
+  $('k_list').innerHTML = (d.keys && d.keys.length)
+    ? tbl([{t:'Key'},{t:'Label'},{t:'Created'},{t:'Last used'},{t:''}],
+        d.keys.map(k => [
+          '<code>' + esc(k.masked) + '</code>',
+          esc(k.label || ''),
+          esc((k.created_at || '').slice(0, 16)),
+          k.last_used_at ? esc(k.last_used_at.slice(0, 16)) : '<span class="sub">never</span>',
+          k.revoked ? '<span class="sub">revoked</span>'
+            : '<button class="copy" onclick="revokeKey(\'' + esc(k.masked) + '\')">Revoke</button>',
+        ]), '')
+    : '<div class="empty">No keys yet. Create one above.</div>';
+  $('k_alt').innerHTML =
+    '<p><b>claude.ai connector:</b> Settings → Connectors → Add custom connector. Custom connectors cannot send a '
+    + 'header, so use the URL form that carries the key in the path — shown when you create a key.</p>'
+    + '<p><b>Anything else that speaks MCP:</b> POST JSON-RPC to <code>' + origin + '/admin/mcp</code> with '
+    + '<code>Authorization: Bearer &lt;your key&gt;</code>.</p>';
+}
+
+async function mintKey() {
+  const r = await fetch('/admin/api/keys', {
+    method: 'POST', headers: hdrs(), body: JSON.stringify({ label: $('k_label').value || null }),
+  });
+  const d = await r.json();
+  if (!r.ok) { toast(d.message || d.error || 'could not create a key', true); return; }
+  $('k_new').innerHTML =
+    '<div class="keybox"><b>Your new key — copy it now, it is not shown again.</b>'
+    + '<code id="k_val">' + esc(d.key) + '</code>'
+    + '<button class="copy" onclick="copyText(document.getElementById(\'k_val\').textContent)">Copy key</button>'
+    + '<p class="prose" style="margin-top:14px"><b>1.</b> Run this in a terminal:</p>'
+    + '<code id="k_cmd">' + esc(d.connect_command) + '</code>'
+    + '<button class="copy" onclick="copyText(document.getElementById(\'k_cmd\').textContent)">Copy command</button>'
+    + '<p class="prose" style="margin-top:14px"><b>2.</b> Start Claude and ask it something, e.g. '
+    + '<em>"search Cite inventory for finance sites above DR 60 and show me the margin"</em>.</p>'
+    + '<p class="prose sub">For a claude.ai custom connector, use this URL instead (the key is in the path, '
+    + 'because connectors cannot send headers):</p>'
+    + '<code id="k_url">' + esc(d.connector_url) + '</code>'
+    + '<button class="copy" onclick="copyText(document.getElementById(\'k_url\').textContent)">Copy URL</button>'
+    + '</div>';
+  $('k_label').value = '';
+  keys();
+}
+
+function copyText(t) {
+  navigator.clipboard?.writeText(t).then(() => toast('copied'), () => toast('could not copy', true));
+}
+
+async function revokeKey(masked) {
+  const prefix = masked.split('…')[0];
+  const r = await fetch('/admin/api/keys', { headers: hdrs() });
+  const d = await r.json();
+  const match = (d.keys || []).find(k => k.masked === masked);
+  if (!match) { toast('key not found', true); return; }
+  if (!confirm('Revoke this key? Anything using it stops working immediately.')) return;
+  // The full key is never returned, so revoke by prefix match server-side.
+  const res = await fetch('/admin/api/keys/' + encodeURIComponent(prefix), { method: 'DELETE', headers: hdrs() });
+  if (!res.ok) { toast('could not revoke', true); return; }
+  toast('key revoked'); keys();
+}
+
 async function boot() {
   await whoami(); await stats(); await load(1);
 }
@@ -320,12 +414,13 @@ async function stats() {
     '<span class="warn"><b>' + s.attr_unknown + '</b> link-attr unknown</span>';
 }
 function showTab(t) {
-  for (const k of ['inv','ana','eng']) {
+  for (const k of ['inv','ana','eng','key']) {
     $('pane-' + k).style.display = t === k ? 'block' : 'none';
     $('tab-' + k).className = 'tab' + (t === k ? ' active' : '');
   }
   if (t === 'ana') analytics();
   if (t === 'eng') engine();
+  if (t === 'key') keys();
 }
 
 const tbl = (headers, rows, empty) => rows.length

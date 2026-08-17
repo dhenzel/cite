@@ -95,6 +95,10 @@ Because the SSO change had removed `ADMIN_TOKEN` as a way into `/admin`, that le
 
 **Close this once sign-in works:** set `ALLOW_TOKEN_CONSOLE = "false"` and redeploy. Diagnostics live at `/auth/debug` (ADMIN_TOKEN-gated): advertised auth methods, the method chosen, and the stored secret's length / whitespace flag / SHA-256 prefix — no secret is printed.
 
+## 2026-08-17 — per-person admin MCP keys
+
+The admin MCP was gated by the one shared `ADMIN_TOKEN`: no attribution, and revoking it cut off the whole team. The console now has a **Connect** tab where a signed-in person mints their own `cka_…` key, with the `claude mcp add` command pre-filled and a header-free `/admin/mcp/<key>` URL for claude.ai connectors (which cannot send headers). Keys are shown once, listed masked with a last-used timestamp, revocable by the owner, and validated on every call against the owner's current engine abilities — so losing engine access disables the key without anyone remembering to. A break-glass token session cannot mint one (`SSO_REQUIRED`). The shared token still works, so it can be retired on David's schedule rather than in a flag day.
+
 ## Still open
 
 1. **Domain + trademark check for "Cite"** (§13.1) — cheap, blocks all public naming; do now.

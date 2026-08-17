@@ -1,12 +1,8 @@
 -- Cite working store (D1: cite-v0). Holds the FULL private dataset — the
 -- public MCP tools expose only whitelisted fields; /admin/api/* (bearer-token)
 -- is the only surface that returns private columns.
-DROP TABLE IF EXISTS sites;
-DROP TABLE IF EXISTS site_content;
-DROP TABLE IF EXISTS placements;
-DROP TABLE IF EXISTS sites_public;
 
-CREATE TABLE sites (
+CREATE TABLE IF NOT EXISTS sites (
   id TEXT PRIMARY KEY,
   domain TEXT NOT NULL UNIQUE,        -- PRIVATE until delivery
   contact_name TEXT,                  -- PRIVATE
@@ -29,11 +25,51 @@ CREATE TABLE sites (
   max_links_per_post INTEGER,
   turnaround_sla_days INTEGER,
   status TEXT DEFAULT 'active',
+  -- how a placement is obtained: paid_placement | self_serve | apply_editorial
+  -- | link_exchange | unavailable  (SPEC §3)
+  acquisition_mode TEXT DEFAULT 'paid_placement',
+  cost_type TEXT DEFAULT 'paid',            -- paid | free
+  requires_reciprocal_link INTEGER DEFAULT 0,
+  agent_instructions TEXT,                  -- what an agent must do on a free site
   metrics_updated_at TEXT,
   updated_at TEXT
 );
 
-CREATE TABLE site_content (
+-- Agent-created accounts (SPEC §17): email captured, no card. Paid placements
+-- will require a Stripe customer.
+CREATE TABLE IF NOT EXISTS accounts (
+  api_key TEXT PRIMARY KEY,
+  email TEXT UNIQUE,
+  tier TEXT DEFAULT 'free',
+  created_at TEXT,
+  orders_used INTEGER DEFAULT 0,
+  quota INTEGER DEFAULT 10,
+  stripe_customer_id TEXT
+);
+
+CREATE TABLE IF NOT EXISTS free_orders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  site_id TEXT,
+  api_key TEXT,
+  target_url TEXT,
+  anchor_text TEXT,
+  state TEXT DEFAULT 'claimed',
+  published_url TEXT,
+  created_at TEXT
+);
+
+-- Every tool call. Query volume and zero-result searches are the demand signal
+-- the free tier exists to collect (SPEC §15).
+CREATE TABLE IF NOT EXISTS query_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  api_key TEXT,
+  tool TEXT,
+  args TEXT,
+  result_count INTEGER,
+  at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS site_content (
   site_id TEXT PRIMARY KEY,
   summary TEXT,
   writes_about TEXT,
@@ -42,7 +78,7 @@ CREATE TABLE site_content (
   source TEXT
 );
 
-CREATE TABLE placements (
+CREATE TABLE IF NOT EXISTS placements (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   site_id TEXT,
   published_url TEXT,
@@ -51,8 +87,8 @@ CREATE TABLE placements (
   placed_at TEXT
 );
 
-CREATE INDEX idx_sites_niche ON sites(niche);
-CREATE INDEX idx_sites_score ON sites(cite_score);
-CREATE INDEX idx_sites_price ON sites(listed_price);
-CREATE INDEX idx_sites_status ON sites(status);
-CREATE INDEX idx_sites_domain ON sites(domain);
+CREATE INDEX IF NOT EXISTS idx_sites_niche ON sites(niche);
+CREATE INDEX IF NOT EXISTS idx_sites_score ON sites(cite_score);
+CREATE INDEX IF NOT EXISTS idx_sites_price ON sites(listed_price);
+CREATE INDEX IF NOT EXISTS idx_sites_status ON sites(status);
+CREATE INDEX IF NOT EXISTS idx_sites_domain ON sites(domain);

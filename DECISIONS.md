@@ -59,6 +59,24 @@ Working MCP server over the full 9,453-site inventory: `search_sites` / `get_sit
 
 David: "we need a backend where we can administrate the pages we offer… and I want to add the price that we pay and the markup we have per site." Added to the spec as §16 (operator console) and to the `Site` model as a private `markup` field (default ×1.6, per-site editable; `listed_price = ceil(seller_price × markup / 5) × 5`). Built in v0: `cite-worker` gains `/admin` (single-page UI) + `/admin/api/*` behind an `ADMIN_TOKEN` bearer secret; inventory moves from the frozen bundled JSON into the `cite-v0` D1 database, which both the admin surface (full private rows) and the public MCP tools (whitelisted fields) read — price edits are live immediately. Worker must be deployed in the same Cloudflare account as `cite-v0` (David's main account).
 
+## 2026-08-17 — free inventory, metrics disclosure, agent signup, operator MCP
+
+**Free sites (SPEC §17).** 465 sites in the database already cost $0. Classified by `acquisition_mode`: 22 `self_serve` (agent publishes itself — includes a curated set of platforms Shortlist's outreach database never carried: Medium, Hashnode, Substack, Quora, Reddit, LinkedIn…), 378 `apply_editorial`, 80 `link_exchange` (parked per David — tagged, excluded from search), 19 free `unavailable`. David: free placements stay free and are the trial; no service fee.
+
+**Classifier correction:** an early pass hid marketwatch.com (DR 91) because its note reads "not available *from Hazel*" — a contact remark, not a closed site. Regex now distinguishes "not available" from "not available from <person>".
+
+**Metrics disclosure (SPEC §5 rewritten).** David wants real SEO metrics visible in the free tier. Two findings shaped the answer:
+1. [Ahrefs API rules](https://ahrefs.com/api/guide) forbid redistribution to non-end-users, white-labeling, renaming metrics and bulk export — but *permit* showing data to the end user with attribution. The original "no vendor metrics anywhere" was stricter than required.
+2. Fingerprinting measured on the real catalog (n=9,433): exact DR alone identifies 0.1% of sites, DR+niche 2.9%, DR+DA+niche 53.8%, DR+DA+TF+CF+niche 93.6%, plus exact traffic 100%.
+
+Result: **exact Ahrefs DR** (labeled, attributed, never renamed) + **bands** for DA and TF/CF + traffic band + decomposed score components. Exact DA/TF/CF/traffic stay in the console.
+
+**Access tiers (SPEC §17).** anonymous (10 results) → `register_account({email})`, agent-driven and instant (50 results, 10 free placements) → funded via Stripe (not enabled). Every call logged to `query_log`.
+
+**Operator MCP (SPEC §16).** `/admin/mcp` exposes the back office as tools for the team — bulk updates dry-run by default. Auth via `ADMIN_TOKEN` header or `/admin/mcp/<token>` for clients that cannot send headers.
+
+**Console analytics.** Signups, active agents, query volume by day, top searched topics, unmet demand (zero-result searches), free placements claimed, and inventory readiness (link-attribute gaps, unpriced sites).
+
 ## Still open
 
 1. **Domain + trademark check for "Cite"** (§13.1) — cheap, blocks all public naming; do now.

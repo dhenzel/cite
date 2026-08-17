@@ -87,3 +87,102 @@ r = await f('/.well-known/oauth-protected-resource');
 assert(r.status === 404, 'oauth discovery probes still 404');
 
 console.log('\nall checks passed');
+
+// ---- free sites, metrics ladder, accounts, admin MCP ----
+sq.exec(`
+  UPDATE sites SET dr=88, da=54, tf=40, cf=50, traffic=25000 WHERE id='cs_aaa111bbb222';
+  INSERT INTO sites (id, domain, niche, seller_price, markup, listed_price, cite_score, traffic_band, status, link_attribute, acquisition_mode, cost_type, agent_instructions)
+  VALUES ('cs_free00self01','free-platform.test','Tech',0,1.6,0,70,'250k+/mo','active','nofollow','self_serve','free','Register and publish directly.'),
+         ('cs_exchange0001','swap-site.test','Tech',0,1.6,0,60,'1k-5k/mo','active','dofollow','link_exchange','free',NULL);
+`);
+
+const call = async (tool: string, args: Record<string, unknown> = {}, key?: string) => {
+  const headers: Record<string, string> = { 'content-type': 'application/json' };
+  if (key) headers.authorization = `Bearer ${key}`;
+  const res = await f('/mcp', { method: 'POST', headers, body: JSON.stringify({ jsonrpc: '2.0', id: 9, method: 'tools/call', params: { name: tool, arguments: args } }) });
+  return JSON.parse((await res.json()).result.content[0].text);
+};
+
+// metrics ladder
+let g = await call('get_site', { site_id: 'cs_aaa111bbb222' });
+assert(g.ahrefs_domain_rating === 88, 'exact Ahrefs DR exposed');
+assert(g.da_band === 'DA 50–59', `DA banded not exact (got ${g.da_band})`);
+assert(g.trust_ratio === 'strong', `TF/CF exposed as a band (got ${g.trust_ratio})`);
+assert(!('da' in g) && !('tf' in g) && !('traffic' in g), 'exact DA/TF/traffic absent from public payload');
+assert(typeof g.metrics_attribution === 'string', 'Ahrefs attribution present');
+assert(!JSON.stringify(g).includes('secret-example'), 'domain still blind in get_site');
+
+// free-site filters + link_exchange exclusion
+let s = await call('search_sites', { cost_type: 'free' });
+const ids = s.sites.map((x: { site_id: string }) => x.site_id);
+assert(ids.includes('cs_free00self01'), 'free self_serve site returned by cost_type filter');
+assert(!ids.includes('cs_exchange0001'), 'link_exchange excluded from search by default');
+s = await call('search_sites', {});
+assert(!s.sites.map((x: { site_id: string }) => x.site_id).includes('cs_exchange0001'), 'link_exchange excluded from default search');
+
+// anonymous cap
+assert(s.result_limit === 10, `anonymous result cap is 10 (got ${s.result_limit})`);
+
+// accounts
+let a = await call('register_account', { email: 'not-an-email' });
+assert(a.error === 'INVALID_EMAIL', 'bad email rejected');
+a = await call('register_account', { email: 'Agent@Example.com' });
+assert(typeof a.api_key === 'string' && a.api_key.startsWith('ck_'), 'register_account mints a key');
+const apiKey = a.api_key;
+const again = await call('register_account', { email: 'agent@example.com' });
+assert(again.api_key === apiKey, 'same email returns the same key (case-insensitive)');
+s = await call('search_sites', {}, apiKey);
+assert(s.result_limit === 50, 'account key raises result cap to 50');
+let st = await call('account_status', {}, apiKey);
+assert(st.tier === 'free' && st.free_placements_remaining === 10, 'account_status reports quota');
+
+// free placement claim
+let c = await call('claim_free_placement', { site_id: 'cs_free00self01', target_url: 'https://buyer.test/pricing' });
+assert(c.error === 'ACCOUNT_REQUIRED', 'claim requires an account');
+c = await call('claim_free_placement', { site_id: 'cs_free00self01', target_url: 'https://buyer.test/pricing' }, apiKey);
+assert(c.claimed === true && c.domain === 'free-platform.test', 'self_serve claim releases the domain so the agent can publish');
+assert(typeof c.agent_instructions === 'string', 'claim returns the agent playbook');
+c = await call('claim_free_placement', { site_id: 'cs_aaa111bbb222', target_url: 'https://buyer.test/x' }, apiKey);
+assert(c.error === 'NOT_FREE_INVENTORY', 'paid site rejects a free claim');
+c = await call('claim_free_placement', { site_id: 'cs_exchange0001', target_url: 'https://buyer.test/x' }, apiKey);
+assert(c.error === 'SITE_UNAVAILABLE', 'link_exchange site cannot be claimed');
+
+// query log populated
+const logged = sq.prepare('SELECT COUNT(*) AS n FROM query_log').get() as { n: number };
+assert(logged.n > 0, `query_log records calls (${logged.n})`);
+
+// ---- admin MCP ----
+const adminCall = async (tool: string, args: Record<string, unknown> = {}, token = 'test-token-123') => {
+  const res = await f('/admin/mcp', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: tool, arguments: args } }),
+  });
+  return JSON.parse((await res.json()).result.content[0].text);
+};
+r = await f('/admin/mcp', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+assert(r.status === 401, 'admin MCP rejects unauthenticated calls');
+r = await f('/admin/mcp/test-token-123', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) });
+assert(r.status === 200 && (await r.json()).result.tools.length === 6, 'admin MCP path-token auth works, 6 tools');
+
+let ad = await adminCall('admin_search_sites', { q: 'secret' });
+assert(ad.sites[0].domain === 'secret-example.com' && ad.sites[0].seller_price === 80, 'admin MCP returns private fields');
+ad = await adminCall('admin_update_site', { domain: 'secret-example.com', fields: { markup: 3 } });
+assert(ad.listed_price === 240, `admin_update_site recomputes listed price (got ${ad.listed_price})`);
+ad = await adminCall('admin_update_site', { domain: 'secret-example.com', fields: { evil_column: 1 } });
+assert(ad.error === 'INVALID_FIELDS', 'admin_update_site rejects non-editable fields');
+ad = await adminCall('admin_bulk_update', { filter: { niche: 'Tech' }, set: { link_attribute: 'dofollow' } });
+assert(ad.dry_run === true && ad.would_affect >= 1, 'bulk update dry-runs by default');
+ad = await adminCall('admin_bulk_update', { filter: { niche: 'Tech' }, set: { link_attribute: 'dofollow' }, confirm: true });
+assert(ad.updated === true, 'bulk update applies with confirm');
+const dofollowNow = sq.prepare("SELECT COUNT(*) AS n FROM sites WHERE niche='Tech' AND link_attribute='dofollow'").get() as { n: number };
+assert(dofollowNow.n >= 1, 'bulk update wrote link_attribute');
+ad = await adminCall('admin_update_metrics', { domain: 'secret-example.com', dr: 91, traffic: 500000 });
+assert(ad.cite_score > 0 && ad.traffic_band === '250k+/mo', 'admin_update_metrics recomputes score and band');
+ad = await adminCall('admin_add_site', { domain: 'brand-new.test', niche: 'Pets', seller_price: 40, markup: 2.5 });
+assert(ad.added === true && ad.listed_price === 100, 'admin_add_site computes listed price');
+ad = await adminCall('admin_analytics', {});
+assert(ad.accounts.total === 1 && ad.activity.queries_total > 0, 'admin_analytics reports signups and queries');
+assert(Array.isArray(ad.top_topics) && Array.isArray(ad.unmet_demand), 'analytics includes demand views');
+
+console.log('\nall extended checks passed');

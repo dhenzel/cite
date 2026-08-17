@@ -48,14 +48,48 @@ export class OidcError extends Error {}
  * Client authentication method, taken from the discovery document. Defaults to
  * client_secret_basic (the OAuth default) when the engine advertises nothing.
  */
-function pickClientAuth(as: oauth.AuthorizationServer, secret: string): oauth.ClientAuth {
+function usingPost(as: oauth.AuthorizationServer): boolean {
   const supported = as.token_endpoint_auth_methods_supported ?? [];
-  if (supported.includes('client_secret_post')) return oauth.ClientSecretPost(secret);
-  if (supported.includes('client_secret_basic')) return oauth.ClientSecretBasic(secret);
-  if (supported.length === 0) return oauth.ClientSecretBasic(secret);
-  if (supported.includes('none')) return oauth.None();
-  // Something exotic (private_key_jwt etc.) — try basic and let the error speak.
-  return oauth.ClientSecretBasic(secret);
+  // Default to POST-body credentials: that is what Laravel-style engines
+  // (Passport/Sanctum) expect, and what this engine's stack uses.
+  if (supported.length === 0) return true;
+  if (supported.includes('client_secret_post')) return true;
+  if (supported.includes('client_secret_basic')) return false;
+  return true;
+}
+
+function pickClientAuth(as: oauth.AuthorizationServer, secret: string): oauth.ClientAuth {
+  return usingPost(as) ? oauth.ClientSecretPost(secret) : oauth.ClientSecretBasic(secret);
+}
+
+/**
+ * What the engine says about itself, plus a non-revealing fingerprint of the
+ * configured secret — enough to tell "wrong secret" from "wrong transport"
+ * without printing the secret anywhere.
+ */
+export async function diagnostics(env: Env): Promise<Record<string, unknown>> {
+  const out: Record<string, unknown> = {};
+  try {
+    const cfg = oidcConfig(env);
+    out.issuer = cfg.issuer;
+    out.client_id = cfg.clientId;
+    out.redirect_uri = cfg.redirectUri;
+    out.client_secret_length = cfg.clientSecret.length;
+    out.client_secret_has_whitespace = /\s/.test(cfg.clientSecret);
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(cfg.clientSecret));
+    out.client_secret_sha256_prefix = [...new Uint8Array(digest)].slice(0, 4)
+      .map((b) => b.toString(16).padStart(2, '0')).join('');
+    const as = await discover(env, cfg);
+    out.token_endpoint = as.token_endpoint;
+    out.authorization_endpoint = as.authorization_endpoint;
+    out.token_endpoint_auth_methods_supported = as.token_endpoint_auth_methods_supported ?? null;
+    out.code_challenge_methods_supported = as.code_challenge_methods_supported ?? null;
+    out.scopes_supported = as.scopes_supported ?? null;
+    out.chosen_client_auth = usingPost(as) ? 'client_secret_post' : 'client_secret_basic';
+  } catch (e) {
+    out.error = (e as Error).message;
+  }
+  return out;
 }
 
 /**
@@ -183,9 +217,24 @@ export async function handleCallback(env: Env, requestUrl: URL): Promise<SignInR
   // Throws if the engine returned an error, or if state does not match.
   const params = oauth.validateAuthResponse(as, client, requestUrl, flow.state);
 
-  const tokenRes = await oauth.authorizationCodeGrantRequest(
+  // Some engines accept only one of post/basic and advertise neither. If the
+  // first attempt is rejected as invalid_client, try the other way round
+  // before giving up — the code is still unused at that point.
+  let tokenRes: Response;
+  tokenRes = await oauth.authorizationCodeGrantRequest(
     as, client, clientAuth, params, cfg.redirectUri, flow.code_verifier,
   );
+  if (tokenRes.status === 400 || tokenRes.status === 401) {
+    const clone = tokenRes.clone();
+    let body: { error?: string } = {};
+    try { body = (await clone.json()) as { error?: string }; } catch { /* not JSON */ }
+    if (body.error === 'invalid_client') {
+      const alternate = usingPost(as) ? oauth.ClientSecretBasic(cfg.clientSecret) : oauth.ClientSecretPost(cfg.clientSecret);
+      tokenRes = await oauth.authorizationCodeGrantRequest(
+        as, client, alternate, params, cfg.redirectUri, flow.code_verifier,
+      );
+    }
+  }
   // Validates the id_token: signature via JWKS, iss, aud, exp — and nonce,
   // because we pass the expected value here.
   const result = await oauth.processAuthorizationCodeResponse(as, client, tokenRes, {

@@ -9,7 +9,7 @@
 //
 // Connect:  claude mcp add --transport http cite https://<worker-url>/mcp
 import { ADMIN_HTML, signInPage } from './admin-ui.js';
-import { buildAuthUrl, handleCallback, describeOidcFailure, OidcNotConfigured, OidcError } from './oidc.js';
+import { buildAuthUrl, handleCallback, describeOidcFailure, diagnostics, OidcNotConfigured, OidcError } from './oidc.js';
 import {
   readSession, createSession, destroySession, upsertUser, isAdmin,
   clearCookieHeader, markEngineUnauthorized, type Session,
@@ -752,6 +752,13 @@ async function handleAuth(req: Request, env: Env, path: string): Promise<Respons
         configured: !(e instanceof OidcNotConfigured),
       }), 400);
     }
+  }
+
+  // Operator-only: what the engine advertises + a fingerprint of the secret
+  // we hold, so a failing sign-in can be diagnosed without printing secrets.
+  if (path === '/auth/debug') {
+    if (!authorized(req, env)) return json({ error: 'UNAUTHORIZED', message: 'Send Authorization: Bearer <ADMIN_TOKEN>' }, 401);
+    return json(await diagnostics(env));
   }
 
   if (path === '/auth/logout') {

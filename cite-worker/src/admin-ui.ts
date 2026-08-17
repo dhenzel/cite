@@ -355,7 +355,7 @@ async function keys() {
           esc((k.created_at || '').slice(0, 16)),
           k.last_used_at ? esc(k.last_used_at.slice(0, 16)) : '<span class="sub">never</span>',
           k.revoked ? '<span class="sub">revoked</span>'
-            : '<button class="copy" onclick="revokeKey(\'' + esc(k.masked) + '\')">Revoke</button>',
+            : '<button class="copy" data-revoke="' + esc(k.masked) + '">Revoke</button>',
         ]), '')
     : '<div class="empty">No keys yet. Create one above.</div>';
   $('k_alt').innerHTML =
@@ -374,16 +374,16 @@ async function mintKey() {
   $('k_new').innerHTML =
     '<div class="keybox"><b>Your new key — copy it now, it is not shown again.</b>'
     + '<code id="k_val">' + esc(d.key) + '</code>'
-    + '<button class="copy" onclick="copyText(document.getElementById(\'k_val\').textContent)">Copy key</button>'
+    + '<button class="copy" data-copy="k_val">Copy key</button>'
     + '<p class="prose" style="margin-top:14px"><b>1.</b> Run this in a terminal:</p>'
     + '<code id="k_cmd">' + esc(d.connect_command) + '</code>'
-    + '<button class="copy" onclick="copyText(document.getElementById(\'k_cmd\').textContent)">Copy command</button>'
+    + '<button class="copy" data-copy="k_cmd">Copy command</button>'
     + '<p class="prose" style="margin-top:14px"><b>2.</b> Start Claude and ask it something, e.g. '
     + '<em>"search Cite inventory for finance sites above DR 60 and show me the margin"</em>.</p>'
     + '<p class="prose sub">For a claude.ai custom connector, use this URL instead (the key is in the path, '
     + 'because connectors cannot send headers):</p>'
     + '<code id="k_url">' + esc(d.connector_url) + '</code>'
-    + '<button class="copy" onclick="copyText(document.getElementById(\'k_url\').textContent)">Copy URL</button>'
+    + '<button class="copy" data-copy="k_url">Copy URL</button>'
     + '</div>';
   $('k_label').value = '';
   keys();
@@ -394,12 +394,8 @@ function copyText(t) {
 }
 
 async function revokeKey(masked) {
-  const prefix = masked.split('…')[0];
-  const r = await fetch('/admin/api/keys', { headers: hdrs() });
-  const d = await r.json();
-  const match = (d.keys || []).find(k => k.masked === masked);
-  if (!match) { toast('key not found', true); return; }
   if (!confirm('Revoke this key? Anything using it stops working immediately.')) return;
+  const prefix = masked.split('…')[0];
   // The full key is never returned, so revoke by prefix match server-side.
   const res = await fetch('/admin/api/keys/' + encodeURIComponent(prefix), { method: 'DELETE', headers: hdrs() });
   if (!res.ok) { toast('could not revoke', true); return; }
@@ -579,6 +575,16 @@ async function addSite() {
 }
 // One listener for every editable cell — inline handlers needed escaping that
 // was easy to get wrong inside a template literal.
+document.getElementById('pane-key').addEventListener('click', (ev) => {
+  const t = ev.target;
+  if (!t || !t.dataset) return;
+  if (t.dataset.revoke) { revokeKey(t.dataset.revoke); return; }
+  if (t.dataset.copy) {
+    const el = document.getElementById(t.dataset.copy);
+    if (el) copyText(el.textContent);
+  }
+});
+
 document.getElementById('rows').addEventListener('change', (ev) => {
   const el = ev.target;
   const field = el && el.dataset && el.dataset.field;

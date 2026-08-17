@@ -8,11 +8,29 @@
 //   computed listed price + margin (SPEC §16).
 //
 // Connect:  claude mcp add --transport http cite https://<worker-url>/mcp
-import { ADMIN_HTML } from './admin-ui.js';
+import { ADMIN_HTML, signInPage } from './admin-ui.js';
+import { buildAuthUrl, handleCallback, OidcNotConfigured, OidcError } from './oidc.js';
+import {
+  readSession, createSession, destroySession, upsertUser, isAdmin,
+  clearCookieHeader, markEngineUnauthorized, type Session,
+} from './session.js';
+import {
+  probe, cachedCall, listTools, pickTool,
+  EngineUnauthorized, EngineScopeDenied, EngineUnavailable,
+} from './engine.js';
 
 export interface Env {
   DB: D1Database;
   ADMIN_TOKEN?: string;
+  // Shortlist Context Engine SSO (SPEC §18)
+  OIDC_ISSUER?: string;
+  OIDC_CLIENT_ID?: string;
+  OIDC_CLIENT_SECRET?: string;   // secret — never in wrangler.toml
+  OIDC_REDIRECT_URI?: string;
+  ENGINE_MCP_URL?: string;
+  SESSION_SECRET?: string;       // secret — signs session cookies
+  CITE_ADMIN_ABILITY?: string;   // default '*:read'
+  CITE_ADMIN_EMAILS?: string;    // comma-separated allowlist override
 }
 
 const MAX_RESULTS = 50;       // with an account key
@@ -564,7 +582,12 @@ async function computeAnalytics(env: Env): Promise<Row> {
 }
 
 async function handleAdminApi(req: Request, env: Env, path: string): Promise<Response> {
-  if (!authorized(req, env)) return json({ error: 'UNAUTHORIZED' }, 401);
+  // Either an SSO session (humans, via the console) or the ADMIN_TOKEN
+  // (scripts and the admin MCP).
+  if (!authorized(req, env)) {
+    const session = await readSession(req, env);
+    if (!session?.is_admin) return json({ error: 'UNAUTHORIZED', sign_in: '/auth/login' }, 401);
+  }
 
   // Analytics: who signed up, how many agents are active, what they ask for,
   // and what we could not answer. The zero-result and top-topic views are the
@@ -671,6 +694,143 @@ async function handleAdminApi(req: Request, env: Env, path: string): Promise<Res
     return json({ ok: true, id, domain }, 201);
   }
 
+  return json({ error: 'NOT_FOUND', path }, 404);
+}
+
+// ---------- auth routes (SPEC §18) ----------
+async function handleAuth(req: Request, env: Env, path: string): Promise<Response> {
+  if (path === '/auth/login') {
+    try {
+      const url = new URL(req.url);
+      const back = url.searchParams.get('next') || '/admin';
+      return Response.redirect(await buildAuthUrl(env, back.startsWith('/') ? back : '/admin'), 302);
+    } catch (e) {
+      if (e instanceof OidcNotConfigured) {
+        return html(signInPage({ error: e.message, configured: false }), 503);
+      }
+      return html(signInPage({ error: (e as Error).message, configured: true }), 502);
+    }
+  }
+
+  if (path === '/auth/callback') {
+    try {
+      const result = await handleCallback(env, new URL(req.url));
+
+      // Ask the engine what this token can actually do before deciding
+      // anything — requested scopes are not granted scopes.
+      let abilities: string[] = [];
+      let engineDown = false;
+      try {
+        const p = await probe(env, result.accessToken);
+        abilities = p.abilities ?? [];
+      } catch (e) {
+        if (e instanceof EngineUnauthorized) throw new OidcError('The engine rejected the new token.');
+        engineDown = true; // sign-in still succeeds; panels degrade
+      }
+
+      const admin = isAdmin(env, result.email, abilities);
+      await upsertUser(env, result, abilities);
+
+      if (!admin && !engineDown) {
+        return html(signInPage({
+          error: 'Your Shortlist engine account does not have the access this console requires. '
+            + `It reports: ${abilities.length ? abilities.join(', ') : 'no abilities'}. `
+            + 'Ask David to add you.',
+          configured: true,
+        }), 403);
+      }
+
+      const cookie = await createSession(env, result, result.accessToken,
+        result.accessExpiresInSeconds, abilities, admin || engineDown);
+      return new Response(null, {
+        status: 302,
+        headers: { location: result.redirectTo, 'set-cookie': cookie },
+      });
+    } catch (e) {
+      const msg = e instanceof OidcError || e instanceof OidcNotConfigured
+        ? e.message : `Sign-in failed: ${(e as Error).message}`;
+      return html(signInPage({ error: msg, configured: !(e instanceof OidcNotConfigured) }), 400);
+    }
+  }
+
+  if (path === '/auth/logout') {
+    const s = await readSession(req, env);
+    if (s) await destroySession(env, s.id);
+    return new Response(null, { status: 302, headers: { location: '/admin', 'set-cookie': clearCookieHeader() } });
+  }
+
+  return json({ error: 'NOT_FOUND', path }, 404);
+}
+
+const html = (body: string, status = 200) =>
+  new Response(body, { status, headers: { 'content-type': 'text/html; charset=utf-8' } });
+
+// ---------- engine data panels (SPEC §18) ----------
+// Each panel resolves its tool from tools/list and degrades on its own: a role
+// that cannot read signals still gets the rest of the page.
+async function handleEngineApi(req: Request, env: Env, path: string, session: Session): Promise<Response> {
+  if (!session.access_token) {
+    return json({ error: 'NO_ENGINE_TOKEN', message: 'Sign in with Shortlist to load engine data.' }, 401);
+  }
+  const url = new URL(req.url);
+  const degrade = (e: unknown) => {
+    if (e instanceof EngineUnauthorized) {
+      // Do not show an empty dashboard — say the session needs renewing.
+      return json({ error: 'ENGINE_UNAUTHORIZED', message: 'Your Shortlist session expired. Sign in again.', sign_in: '/auth/login' }, 401);
+    }
+    if (e instanceof EngineScopeDenied) {
+      return json({ error: 'SCOPE_DENIED', message: 'Your engine role does not include this.', detail: (e as Error).message }, 200);
+    }
+    return json({ error: 'ENGINE_UNAVAILABLE', message: (e as Error).message }, 200);
+  };
+
+  try {
+    if (path === '/admin/api/engine/me') {
+      const p = await probe(env, session.access_token);
+      const tools = await listTools(env, session.access_token, session.sub).catch(() => []);
+      return json({
+        engine: p.engine ?? null,
+        abilities: p.abilities ?? session.abilities,
+        console: p.console ?? null,
+        user: { sub: session.sub, email: session.email, name: session.name },
+        panels: {
+          search: pickTool(tools, ['search-tool']),
+          recent: pickTool(tools, ['recent-tool']),
+          signals: pickTool(tools, ['signals-tool']),
+        },
+        tool_count: tools.length,
+      });
+    }
+
+    if (path === '/admin/api/engine/recent') {
+      const tools = await listTools(env, session.access_token, session.sub);
+      const tool = pickTool(tools, ['recent-tool']);
+      if (!tool) return json({ error: 'TOOL_UNAVAILABLE', message: 'This engine has no recent-tool.' }, 200);
+      const data = await cachedCall(env, session.access_token, session.sub, tool, { limit: 12 });
+      return json({ tool, data });
+    }
+
+    if (path === '/admin/api/engine/signals') {
+      const tools = await listTools(env, session.access_token, session.sub);
+      const tool = pickTool(tools, ['signals-tool']);
+      if (!tool) return json({ error: 'TOOL_UNAVAILABLE', message: 'This engine has no signals-tool.' }, 200);
+      const data = await cachedCall(env, session.access_token, session.sub, tool, { limit: 10 });
+      return json({ tool, data });
+    }
+
+    if (path === '/admin/api/engine/search') {
+      const q = url.searchParams.get('q');
+      if (!q) return json({ error: 'QUERY_REQUIRED' }, 400);
+      const tools = await listTools(env, session.access_token, session.sub);
+      const tool = pickTool(tools, ['search-tool']);
+      if (!tool) return json({ error: 'TOOL_UNAVAILABLE', message: 'This engine has no search-tool.' }, 200);
+      const data = await cachedCall(env, session.access_token, session.sub, tool, { query: q, limit: 8 });
+      return json({ tool, query: q, data });
+    }
+  } catch (e) {
+    if (e instanceof EngineUnauthorized) await markEngineUnauthorized(env, session.id);
+    return degrade(e);
+  }
   return json({ error: 'NOT_FOUND', path }, 404);
 }
 
@@ -971,8 +1131,26 @@ export default {
       const n = (await env.DB.prepare(`SELECT COUNT(*) AS n FROM sites`).first()) as { n: number };
       return json({ ok: true, sites: n.n });
     }
+    if (url.pathname.startsWith('/auth/')) return handleAuth(req, env, url.pathname);
+
     if (url.pathname === '/admin') {
+      // Humans sign in with Shortlist. The shared ADMIN_TOKEN is no longer a
+      // way into the web console — it remains only for /admin/mcp, which an
+      // agent cannot get through a browser flow.
+      const session = await readSession(req, env);
+      if (!session?.is_admin) {
+        return new Response(signInPage({ configured: !!env.OIDC_CLIENT_ID && !!env.OIDC_CLIENT_SECRET }), {
+          status: session ? 403 : 200,
+          headers: { 'content-type': 'text/html; charset=utf-8' },
+        });
+      }
       return new Response(ADMIN_HTML, { headers: { 'content-type': 'text/html; charset=utf-8' } });
+    }
+
+    if (url.pathname.startsWith('/admin/api/engine/')) {
+      const session = await readSession(req, env);
+      if (!session?.is_admin) return json({ error: 'UNAUTHORIZED', sign_in: '/auth/login' }, 401);
+      return handleEngineApi(req, env, url.pathname, session);
     }
     // Admin MCP. Header auth is preferred; the /admin/mcp/<token> form exists
     // for MCP clients that cannot send custom headers.

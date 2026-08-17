@@ -1,6 +1,57 @@
+// Sign-in screen (SPEC §18). Shown at /admin when there is no session — one
+// button, no password: identity comes from the Shortlist Context Engine.
+export function signInPage(opts: { error?: string; configured?: boolean } = {}): string {
+  const { error, configured = true } = opts;
+  const esc = (s: string) => s.replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cite — Sign in</title>
+<style>
+  :root { --bg:#FBFAF8; --surface:#fff; --ink:#1A2230; --muted:#616C7E; --line:#E3E1DB;
+          --accent:#14655A; --accent-ink:#fff; --bad:#A33A2E; --bad-soft:rgba(163,58,46,.08); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg:#0F141B; --surface:#161D27; --ink:#E7EBF0; --muted:#9BA5B4; --line:#273140;
+    --accent:#6FD3C0; --accent-ink:#08131A; --bad:#E0796B; --bad-soft:rgba(224,121,107,.12); } }
+  :root[data-theme="dark"] { --bg:#0F141B; --surface:#161D27; --ink:#E7EBF0; --muted:#9BA5B4;
+    --line:#273140; --accent:#6FD3C0; --accent-ink:#08131A; --bad:#E0796B; --bad-soft:rgba(224,121,107,.12); }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; display:grid; place-items:center; background:var(--bg); color:var(--ink);
+         font:15px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif; padding:24px; }
+  .box { background:var(--surface); border:1px solid var(--line); border-radius:14px;
+         padding:34px 34px 30px; max-width:430px; width:100%; }
+  h1 { margin:0 0 6px; font-size:23px; letter-spacing:-.01em; }
+  .sub { color:var(--muted); margin:0 0 24px; font-size:14.5px; }
+  a.btn { display:block; text-align:center; background:var(--accent); color:var(--accent-ink);
+          text-decoration:none; font-weight:650; padding:13px 18px; border-radius:9px; font-size:15.5px; }
+  a.btn:hover { filter:brightness(1.06); }
+  a.btn:focus-visible { outline:2px solid var(--ink); outline-offset:2px; }
+  .err { background:var(--bad-soft); border-left:3px solid var(--bad); color:var(--ink);
+         padding:12px 14px; border-radius:0 8px 8px 0; margin:0 0 20px; font-size:14px; }
+  .foot { color:var(--muted); font-size:12.5px; margin:20px 0 0; }
+  code { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12.5px; }
+</style>
+</head>
+<body>
+  <div class="box">
+    <h1>Cite operator console</h1>
+    <p class="sub">Inventory, pricing and margin for the Shortlist publisher network.</p>
+    ${error ? `<p class="err">${esc(error)}</p>` : ''}
+    ${configured
+      ? `<a class="btn" href="/auth/login">Sign in with Shortlist</a>
+         <p class="foot">Uses your Shortlist Context Engine account. The first time, you'll be asked to approve what this app may read.</p>`
+      : `<p class="foot">Sign-in isn't configured on this deployment yet. Set <code>OIDC_CLIENT_SECRET</code> and the related variables, then reload.</p>`}
+  </div>
+</body>
+</html>`;
+}
+
 // Operator console UI (SPEC §16) — one inline page, no external assets.
-// Served at /admin; talks to /admin/api/* with the bearer token the operator
-// enters (kept in sessionStorage only).
+// Served at /admin behind an SSO session; talks to /admin/api/* with the
+// session cookie.
 export const ADMIN_HTML = `<!doctype html>
 <html lang="en">
 <head>
@@ -64,25 +115,27 @@ export const ADMIN_HTML = `<!doctype html>
   .mini td.n { text-align:right; font-variant-numeric:tabular-nums; }
   .empty { color:var(--muted); font-size:13px; padding:8px 0; }
   .barcell { background:linear-gradient(90deg,var(--accent) var(--w,0%),transparent 0); border-radius:3px; }
+  .whoami { font-size:12.5px; color:var(--muted); display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .whoami b { color:var(--ink); }
+  .whoami a { color:var(--accent); }
+  .abil { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; background:rgba(143,168,255,.10);
+          color:var(--accent); padding:1px 6px; border-radius:4px; }
+  .banner { background:rgba(216,169,78,.10); border-left:3px solid var(--warn); color:var(--ink);
+            padding:10px 14px; border-radius:0 8px 8px 0; margin:12px 0; font-size:13.5px; }
+  .banner.err { background:rgba(224,118,108,.10); border-left-color:var(--bad); }
 </style>
 </head>
 <body>
-<div id="login" class="wrap">
-  <h1>Cite <small>operator console</small></h1>
-  <p style="color:var(--muted)">Paste the operator token (ADMIN_TOKEN secret).</p>
-  <input id="tok" type="password" placeholder="operator token" autocomplete="off">
-  <button class="primary" onclick="saveTok()">Enter</button>
-  <p id="loginerr" style="color:var(--bad)"></p>
-</div>
-
-<div id="app" class="wrap" style="display:none">
+<div id="app" class="wrap">
   <header>
     <h1>Cite <small>operator console</small></h1>
     <div class="stats" id="stats"></div>
+    <div class="whoami" id="whoami"></div>
   </header>
   <div class="tabs">
     <button id="tab-inv" class="tab active" onclick="showTab('inv')">Inventory</button>
     <button id="tab-ana" class="tab" onclick="showTab('ana')">Analytics</button>
+    <button id="tab-eng" class="tab" onclick="showTab('eng')">Shortlist</button>
   </div>
 
   <div id="pane-inv">
@@ -134,28 +187,100 @@ export const ADMIN_HTML = `<!doctype html>
     </div>
     <section><h3>Inventory readiness</h3><div id="a_ready"></div></section>
   </div>
+
+  <div id="pane-eng" style="display:none">
+    <div id="e_head"></div>
+    <div class="bar">
+      <input id="e_q" placeholder="Look up a publisher, company or client in Shortlist…" style="flex:1;min-width:260px">
+      <button class="primary" onclick="engSearch()">Search engine</button>
+    </div>
+    <div id="e_search"></div>
+    <div class="cols">
+      <section><h3>Recent in Shortlist</h3><div id="e_recent"></div></section>
+      <section><h3>Open signals</h3><div id="e_signals"></div></section>
+    </div>
+  </div>
 </div>
 <div class="toast" id="toast"></div>
 
 <script>
 let page = 1;
 const $ = (id) => document.getElementById(id);
-const tok = () => sessionStorage.getItem('cite_tok') || '';
-const hdrs = () => ({ 'authorization': 'Bearer ' + tok(), 'content-type': 'application/json' });
+// Auth is the SSO session cookie — sent automatically, nothing to store.
+const hdrs = () => ({ 'content-type': 'application/json' });
 
 function toast(msg, err) {
   const t = $('toast'); t.textContent = msg; t.className = 'toast' + (err ? ' err' : '');
   t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 2600);
 }
-async function saveTok() {
-  sessionStorage.setItem('cite_tok', $('tok').value.trim());
-  const r = await fetch('/admin/api/stats', { headers: hdrs() });
-  if (r.status === 401) { $('loginerr').textContent = 'Invalid token (or ADMIN_TOKEN secret not set on the worker).'; return; }
-  boot();
+async function whoami() {
+  const r = await fetch('/admin/api/engine/me', { headers: hdrs() });
+  if (r.status === 401) { $('whoami').innerHTML = '<span>Shortlist session expired — <a href="/auth/login">sign in again</a></span>'; return; }
+  const d = await r.json();
+  if (d.error) { $('whoami').innerHTML = '<span>Signed in · Shortlist data unavailable</span><a href="/auth/logout">Sign out</a>'; return; }
+  const who = (d.user && (d.user.name || d.user.email)) || 'signed in';
+  const eng = (d.engine && d.engine.display_name) || 'Shortlist';
+  const abil = (d.abilities || []).slice(0, 6).map(a => '<span class="abil">' + esc(a) + '</span>').join(' ');
+  const more = (d.abilities || []).length > 6 ? ' +' + ((d.abilities || []).length - 6) : '';
+  $('whoami').innerHTML = '<span><b>' + esc(who) + '</b> · ' + esc(eng) + '</span>' + abil + more +
+    ' <a href="/auth/logout">Sign out</a>';
+  window.__panels = d.panels || {};
 }
+
+async function engFetch(path, target, render) {
+  $(target).innerHTML = '<div class="empty">Loading…</div>';
+  const r = await fetch(path, { headers: hdrs() });
+  if (r.status === 401) {
+    $(target).innerHTML = '<div class="banner err">Your Shortlist session expired. <a href="/auth/login">Sign in again</a>.</div>';
+    return;
+  }
+  const d = await r.json();
+  if (d.error === 'SCOPE_DENIED') {
+    $(target).innerHTML = '<div class="banner">Your engine role does not include this.</div>'; return;
+  }
+  if (d.error === 'TOOL_UNAVAILABLE') {
+    $(target).innerHTML = '<div class="empty">This engine does not offer that tool.</div>'; return;
+  }
+  if (d.error) { $(target).innerHTML = '<div class="banner">' + esc(d.message || d.error) + '</div>'; return; }
+  $(target).innerHTML = render(d);
+}
+
+const engRows = (items, cols) => items && items.length
+  ? '<table class="mini"><tbody>' + items.map(i => '<tr>' + cols(i) + '</tr>').join('') + '</tbody></table>'
+  : '<div class="empty">Nothing to show.</div>';
+
+const engLink = (url, label) => url
+  ? '<a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(label) + '</a>' : esc(label);
+
+function engine() {
+  engFetch('/admin/api/engine/recent', 'e_recent', d => {
+    const items = (d.data && (d.data.results || d.data.entities || d.data)) || [];
+    const arr = Array.isArray(items) ? items.slice(0, 12) : [];
+    return engRows(arr, i => '<td>' + engLink(i.url, (i.type ? i.type + ' · ' : '') + (i.slug || i.title || i.id || '?')) + '</td>'
+      + '<td class="n sub">' + esc((i.updated_at || i.entity_updated_at || '').toString().slice(0, 10)) + '</td>');
+  });
+  engFetch('/admin/api/engine/signals', 'e_signals', d => {
+    const items = (d.data && (d.data.signals || d.data.results || d.data)) || [];
+    const arr = Array.isArray(items) ? items.slice(0, 10) : [];
+    return engRows(arr, i => '<td>' + engLink(i.url, i.title || i.slug || '?') + '</td>'
+      + '<td class="n sub">' + esc(i.kind || i.species || '') + '</td>');
+  });
+}
+
+async function engSearch() {
+  const q = $('e_q').value.trim();
+  if (!q) return;
+  engFetch('/admin/api/engine/search?q=' + encodeURIComponent(q), 'e_search', d => {
+    const items = (d.data && (d.data.results || d.data)) || [];
+    const arr = Array.isArray(items) ? items.slice(0, 10) : [];
+    return '<h3>Results for “' + esc(q) + '”</h3>' + engRows(arr, i =>
+      '<td>' + engLink(i.url, i.entity_ref || i.id || i.title || '?') + '</td>'
+      + '<td class="sub">' + esc((i.excerpt || '').toString().slice(0, 120)) + '</td>');
+  });
+}
+
 async function boot() {
-  $('login').style.display = 'none'; $('app').style.display = 'block';
-  await stats(); await load(1);
+  await whoami(); await stats(); await load(1);
 }
 async function stats() {
   const s = await (await fetch('/admin/api/stats', { headers: hdrs() })).json();
@@ -168,11 +293,12 @@ async function stats() {
     '<span class="warn"><b>' + s.attr_unknown + '</b> link-attr unknown</span>';
 }
 function showTab(t) {
-  $('pane-inv').style.display = t === 'inv' ? 'block' : 'none';
-  $('pane-ana').style.display = t === 'ana' ? 'block' : 'none';
-  $('tab-inv').className = 'tab' + (t === 'inv' ? ' active' : '');
-  $('tab-ana').className = 'tab' + (t === 'ana' ? ' active' : '');
+  for (const k of ['inv','ana','eng']) {
+    $('pane-' + k).style.display = t === k ? 'block' : 'none';
+    $('tab-' + k).className = 'tab' + (t === k ? ' active' : '');
+  }
   if (t === 'ana') analytics();
+  if (t === 'eng') engine();
 }
 
 const tbl = (headers, rows, empty) => rows.length
@@ -183,7 +309,7 @@ const tbl = (headers, rows, empty) => rows.length
 
 async function analytics() {
   const r = await fetch('/admin/api/analytics', { headers: hdrs() });
-  if (r.status === 401) { sessionStorage.removeItem('cite_tok'); location.reload(); return; }
+  if (r.status === 401) { location.href = '/auth/login'; return; }
   const d = await r.json();
   const kpi = (n, l, hi) => '<div class="kpi' + (hi ? ' hi' : '') + '"><div class="n">' + n + '</div><div class="l">' + l + '</div></div>';
   $('kpis').innerHTML =
@@ -245,7 +371,7 @@ async function load(p) {
   if ($('fcost').value) u.set('cost_type', $('fcost').value);
   if ($('fmode').value) u.set('acquisition_mode', $('fmode').value);
   const r = await fetch('/admin/api/sites?' + u, { headers: hdrs() });
-  if (r.status === 401) { sessionStorage.removeItem('cite_tok'); location.reload(); return; }
+  if (r.status === 401) { location.href = '/auth/login'; return; }
   const d = await r.json();
   $('pageinfo').textContent = 'page ' + d.page + ' — ' + d.total + ' sites';
   const niches = new Set([...$('fniche').options].map(o => o.value));
@@ -300,7 +426,7 @@ async function addSite() {
   if (!r.ok) { toast(d.error || 'add failed', true); return; }
   toast('added ' + d.domain); load(1); stats();
 }
-if (tok()) boot();
+boot();
 </script>
 </body>
 </html>`;

@@ -77,6 +77,16 @@ Result: **exact Ahrefs DR** (labeled, attributed, never renamed) + **bands** for
 
 **Console analytics.** Signups, active agents, query volume by day, top searched topics, unmet demand (zero-result searches), free placements claimed, and inventory readiness (link-attribute gaps, unpriced sites).
 
+## 2026-08-17 — Shortlist Context Engine SSO (spec §18)
+
+Operator console moved from a shared bearer token to **"Sign in with Shortlist"** — OIDC against `shortlist.on-relote.com`, with the same access token used to read engine data over MCP.
+
+- **Admin rule (David's call):** holds the `*:read` ability **or** email in `CITE_ADMIN_EMAILS`. Configurable via `CITE_ADMIN_ABILITY` — worth revisiting once real people sign in and we see what their tokens actually carry (each sign-in records the ability list on the user row).
+- **Shared `ADMIN_TOKEN` (David's call):** retained for `/admin/mcp` only, since agents can't do a browser flow. It no longer opens the web console.
+- **Panels (David's call):** publisher/company lookup (`search-tool`), recent engine activity (`recent-tool`), open signals (`signals-tool`), plus an always-on identity strip from `probe-tool`.
+- Redirect URI to register: `https://cite-mcp.d-henzel.workers.dev/auth/callback`.
+- Engine endpoints are unreachable from the build sandbox, so the flow is verified against a stubbed issuer + stubbed engine (real PKCE, real JWKS signature validation). First live sign-in is David's.
+
 ## Still open
 
 1. **Domain + trademark check for "Cite"** (§13.1) — cheap, blocks all public naming; do now.

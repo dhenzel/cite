@@ -186,3 +186,221 @@ assert(ad.accounts.total === 1 && ad.activity.queries_total > 0, 'admin_analytic
 assert(Array.isArray(ad.top_topics) && Array.isArray(ad.unmet_demand), 'analytics includes demand views');
 
 console.log('\nall extended checks passed');
+
+// ============ SSO: stubbed issuer + stubbed engine ============
+// The real endpoints are unreachable from CI, so both are stubbed at fetch
+// level. oauth4webapi still does the real work: PKCE, state, and full
+// id_token validation against a JWKS we generate here.
+const ISSUER = 'https://engine.test';
+const CLIENT_ID = 'test-client-id';
+
+const kp = await crypto.subtle.generateKey(
+  { name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' },
+  true, ['sign', 'verify'],
+);
+const jwk = await crypto.subtle.exportKey('jwk', kp.publicKey);
+const b64u = (b: ArrayBuffer | Uint8Array) =>
+  btoa(String.fromCharCode(...new Uint8Array(b as ArrayBuffer))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const b64uStr = (s: string) => btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+async function makeIdToken(claims: Record<string, unknown>) {
+  const header = b64uStr(JSON.stringify({ alg: 'RS256', typ: 'JWT', kid: 'k1' }));
+  const payload = b64uStr(JSON.stringify(claims));
+  const sig = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', kp.privateKey, new TextEncoder().encode(`${header}.${payload}`));
+  return `${header}.${payload}.${b64u(sig)}`;
+}
+
+let engineAbilities = ['*:read', 'entities:read', 'signals:read'];
+let engineMode: 'ok' | 'unauthorized' | 'scope_denied' = 'ok';
+let engineCalls = 0;
+let lastAuthHeader = '';
+let lastNonce = '';
+
+const realFetch = globalThis.fetch;
+globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+  const url = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url;
+  // Only the MCP calls are JSON; the token request is form-encoded.
+  let body: any = null;
+  if (init?.body && typeof init.body === 'string' && init.body.trimStart().startsWith('{')) {
+    try { body = JSON.parse(init.body); } catch { body = null; }
+  }
+
+  if (url === `${ISSUER}/.well-known/openid-configuration`) {
+    return new Response(JSON.stringify({
+      issuer: ISSUER,
+      authorization_endpoint: `${ISSUER}/authorize`,
+      token_endpoint: `${ISSUER}/token`,
+      jwks_uri: `${ISSUER}/jwks`,
+      response_types_supported: ['code'],
+      grant_types_supported: ['authorization_code'],
+      id_token_signing_alg_values_supported: ['RS256'],
+      code_challenge_methods_supported: ['S256'],
+      token_endpoint_auth_methods_supported: ['client_secret_post'],
+      scopes_supported: ['openid', 'profile', 'email', '*:read', 'briefs:assemble'],
+    }), { headers: { 'content-type': 'application/json' } });
+  }
+  if (url === `${ISSUER}/jwks`) {
+    return new Response(JSON.stringify({ keys: [{ ...jwk, kid: 'k1', use: 'sig', alg: 'RS256' }] }),
+      { headers: { 'content-type': 'application/json' } });
+  }
+  if (url === `${ISSUER}/token`) {
+    const form = new URLSearchParams(init!.body as string);
+    if (!form.get('code_verifier')) return new Response(JSON.stringify({ error: 'invalid_request' }), { status: 400, headers: { 'content-type': 'application/json' } });
+    const now = Math.floor(Date.now() / 1000);
+    const id_token = await makeIdToken({
+      iss: ISSUER, aud: CLIENT_ID, sub: 'engine-user-1', exp: now + 3600, iat: now,
+      nonce: lastNonce, email: 'ops@shortlist.io', name: 'Ops Person',
+    });
+    return new Response(JSON.stringify({
+      access_token: 'engine-access-token', token_type: 'bearer', expires_in: 3600, id_token,
+    }), { headers: { 'content-type': 'application/json' } });
+  }
+  if (url === `${ISSUER}/mcp`) {
+    engineCalls++;
+    lastAuthHeader = (init?.headers as Record<string, string>)?.authorization ?? '';
+    if (engineMode === 'unauthorized') return new Response('nope', { status: 401 });
+    if (body?.method === 'tools/list') {
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 2, result: { tools: [
+        { name: 'probe-tool', available: true }, { name: 'recent-tool', available: true, required_scope: 'entities:read' },
+        { name: 'signals-tool', available: true, required_scope: 'signals:read' },
+        { name: 'search-tool', available: null },
+      ] } }), { headers: { 'content-type': 'application/json' } });
+    }
+    const toolName = body?.params?.name;
+    if (engineMode === 'scope_denied' && toolName === 'signals-tool') {
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, error: { code: -32000, message: 'AuthorizationException: missing scope signals:read' } }),
+        { headers: { 'content-type': 'application/json' } });
+    }
+    const payload = toolName === 'probe-tool'
+      ? { engine: { key: 'shortlist', display_name: 'Shortlist' }, abilities: engineAbilities, ability_count: engineAbilities.length }
+      : toolName === 'recent-tool' ? { results: [{ type: 'company', slug: 'acme', updated_at: '2026-08-17' }] }
+      : toolName === 'signals-tool' ? { signals: [{ title: 'A risk', kind: 'risk' }] }
+      : { results: [{ entity_ref: 'company::acme', excerpt: 'match' }] };
+    return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } }),
+      { headers: { 'content-type': 'application/json' } });
+  }
+  return realFetch(input as RequestInfo, init);
+}) as typeof fetch;
+
+const ssoEnv: Env = {
+  ...env,
+  OIDC_ISSUER: ISSUER, OIDC_CLIENT_ID: CLIENT_ID, OIDC_CLIENT_SECRET: 'shh',
+  OIDC_REDIRECT_URI: 'https://cite.test/auth/callback',
+  ENGINE_MCP_URL: `${ISSUER}/mcp`, SESSION_SECRET: 'session-signing-secret',
+} as Env;
+const fs2 = (path: string, init?: RequestInit) => worker.fetch(new Request(`https://cite.test${path}`, init), ssoEnv);
+
+// unauthenticated console → sign-in page with the required button label
+r = await fs2('/admin');
+let page = await r.text();
+assert(r.status === 200 && page.includes('Sign in with Shortlist'), 'console shows the Sign in with Shortlist button');
+assert(!page.includes('operator token'), 'token prompt is gone from the console');
+
+// the old shared token must no longer open the web console
+r = await fs2('/admin', { headers: { authorization: 'Bearer test-token-123' } });
+assert((await r.text()).includes('Sign in with Shortlist'), 'ADMIN_TOKEN no longer opens the web console');
+
+// login redirect: PKCE S256 + state + nonce + exact scopes
+r = await fs2('/auth/login');
+assert(r.status === 302, 'login redirects to the engine');
+const authUrl = new URL(r.headers.get('location')!);
+assert(authUrl.origin + authUrl.pathname === `${ISSUER}/authorize`, 'authorize endpoint came from discovery');
+assert(authUrl.searchParams.get('code_challenge_method') === 'S256', 'PKCE S256 requested');
+assert(!!authUrl.searchParams.get('code_challenge'), 'code_challenge present');
+assert(!!authUrl.searchParams.get('state'), 'state present');
+assert(!!authUrl.searchParams.get('nonce'), 'nonce present');
+assert(authUrl.searchParams.get('scope') === 'openid profile email *:read briefs:assemble', 'exact scopes requested');
+assert(!/users:manage|system:config/.test(authUrl.searchParams.get('scope')!), 'no administrative scopes requested');
+lastNonce = authUrl.searchParams.get('nonce')!;
+const goodState = authUrl.searchParams.get('state')!;
+
+// forged state is rejected
+r = await fs2('/auth/callback?code=abc&state=not-a-real-state');
+assert(r.status === 400 && (await r.text()).includes('expired or was already used'), 'unknown state rejected');
+
+// happy path
+r = await fs2(`/auth/callback?code=abc&state=${goodState}`);
+if (r.status !== 302) { const t = await r.clone().text(); const m = t.match(/<p class=\"err\">([\s\S]*?)<\/p>/); console.log('DEBUG error:', m ? m[1] : t.slice(0,300)); }
+assert(r.status === 302 && r.headers.get('location') === '/admin', 'callback signs the person in');
+const setCookie = r.headers.get('set-cookie')!;
+assert(/HttpOnly/.test(setCookie) && /Secure/.test(setCookie) && /SameSite=Lax/.test(setCookie), 'session cookie is hardened');
+const cookie = setCookie.split(';')[0];
+
+// state is single-use
+r = await fs2(`/auth/callback?code=abc&state=${goodState}`);
+assert(r.status === 400, 'state cannot be replayed');
+
+// user row keyed on sub, not email
+const userRow = sq.prepare('SELECT sub, email, name FROM users').get() as { sub: string; email: string; name: string };
+assert(userRow.sub === 'engine-user-1' && userRow.email === 'ops@shortlist.io', 'user keyed on sub with claims stored');
+
+// session opens the console and the admin API
+r = await fs2('/admin', { headers: { cookie } });
+assert((await r.text()).includes('operator console'), 'session opens the console');
+r = await fs2('/admin/api/sites?q=secret', { headers: { cookie } });
+assert(r.status === 200, 'session authorises the admin API');
+
+// engine identity uses the same token from sign-in
+r = await fs2('/admin/api/engine/me', { headers: { cookie } });
+let me = await r.json();
+assert(lastAuthHeader === 'Bearer engine-access-token', 'engine called with the sign-in access token');
+assert(me.abilities.includes('*:read') && me.engine.display_name === 'Shortlist', 'probe-tool drives identity + abilities');
+assert(me.panels.recent === 'recent-tool' && me.panels.signals === 'signals-tool', 'panels resolved from tools/list');
+
+// caching: a second identical read must not hit the engine again
+r = await fs2('/admin/api/engine/recent', { headers: { cookie } });
+assert((await r.json()).data.results.length === 1, 'recent panel returns engine data');
+const callsAfterFirst = engineCalls;
+await fs2('/admin/api/engine/recent', { headers: { cookie } });
+assert(engineCalls === callsAfterFirst, 'second read served from cache');
+
+// scope denial degrades one panel only
+engineMode = 'scope_denied';
+r = await fs2('/admin/api/engine/signals', { headers: { cookie } });
+let sig = await r.json();
+assert(r.status === 200 && sig.error === 'SCOPE_DENIED', 'scope denial degrades the panel, not the page');
+r = await fs2('/admin/api/sites', { headers: { cookie } });
+assert(r.status === 200, 'rest of the console still works during a scope denial');
+
+// engine 401 → send the person back to sign-in, never a silent empty dashboard
+engineMode = 'unauthorized';
+r = await fs2('/admin/api/engine/search?q=acme', { headers: { cookie } });
+sig = await r.json();
+assert(r.status === 401 && sig.error === 'ENGINE_UNAUTHORIZED' && sig.sign_in === '/auth/login', 'engine 401 routes back to sign-in');
+engineMode = 'ok';
+
+// a viewer-shaped token (no *:read, not allowlisted) is refused the console
+engineAbilities = ['entities:read'];
+r = await fs2('/auth/login');
+lastNonce = new URL(r.headers.get('location')!).searchParams.get('nonce')!;
+const viewerState = new URL(r.headers.get('location')!).searchParams.get('state')!;
+r = await fs2(`/auth/callback?code=abc&state=${viewerState}`);
+assert(r.status === 403 && (await r.text()).includes('does not have the access'), 'viewer role refused with an explanation');
+
+// ...unless allowlisted by email
+const allowEnv = { ...ssoEnv, CITE_ADMIN_EMAILS: 'ops@shortlist.io' } as Env;
+const fs3 = (path: string, init?: RequestInit) => worker.fetch(new Request(`https://cite.test${path}`, init), allowEnv);
+r = await fs3('/auth/login');
+lastNonce = new URL(r.headers.get('location')!).searchParams.get('nonce')!;
+const allowState = new URL(r.headers.get('location')!).searchParams.get('state')!;
+r = await fs3(`/auth/callback?code=abc&state=${allowState}`);
+assert(r.status === 302, 'email allowlist overrides the ability check');
+engineAbilities = ['*:read', 'entities:read', 'signals:read'];
+
+// the admin MCP still runs on ADMIN_TOKEN — agents cannot do a browser flow
+r = await fs2('/admin/mcp', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer test-token-123' },
+  body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) });
+assert(r.status === 200 && (await r.json()).result.tools.length === 6, 'admin MCP still accepts ADMIN_TOKEN');
+
+// sign-out clears the session
+r = await fs2('/auth/logout', { headers: { cookie } });
+assert(r.status === 302 && /Max-Age=0/.test(r.headers.get('set-cookie')!), 'sign-out clears the cookie');
+r = await fs2('/admin/api/sites', { headers: { cookie } });
+assert(r.status === 401, 'destroyed session no longer authorises');
+
+// unconfigured deployment says so instead of 500ing
+const bareEnv = { DB: d1, ADMIN_TOKEN: 'test-token-123' } as Env;
+r = await worker.fetch(new Request('https://cite.test/auth/login'), bareEnv);
+assert(r.status === 503 && (await r.text()).includes("isn't configured"), 'missing OIDC config fails clearly');
+
+console.log('\nall SSO checks passed');

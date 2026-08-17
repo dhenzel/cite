@@ -369,3 +369,25 @@ The ladder is deliberately frictionless at the point an agent hits a limit: the 
 ### Operator MCP
 
 The console (§16) is also exposed as an MCP server at `/admin/mcp`, guarded by the same `ADMIN_TOKEN`, so the team can run the back office from an agent: `admin_search_sites`, `admin_update_site`, `admin_bulk_update` (dry-run by default), `admin_update_metrics` (push a refresh, recompute Cite Score), `admin_add_site`, `admin_analytics`. Never listed on public MCP directories.
+
+---
+
+## 18. Operator sign-in: Shortlist Context Engine SSO
+
+*Added 2026-08-17.* The console (§16) authenticates humans against the **Shortlist Context Engine** over OpenID Connect, and reads engine data as that person using the same token.
+
+**One credential, both halves.** The access token from sign-in is the token used against the engine's MCP endpoint. Nothing separate is issued or stored.
+
+**Flow.** Authorization code + PKCE (S256, required by the engine), with `state` and `nonce` sent and verified. Endpoints, signing keys and algorithms come from the discovery document — never hard-coded. The `id_token` is verified for signature (JWKS), `iss` exact-match, `aud` = our client id, `exp`, and `nonce`. Protocol handling is delegated to `oauth4webapi` (WebCrypto, Workers-native).
+
+**Scopes requested:** `openid profile email *:read briefs:assemble` — identity plus engine reads. No `events:emit` / `files:write` / `signals:write` (this app only reads) and no administrative scopes such as `users:manage` or `system:config`.
+
+**Identity.** The local user is keyed on the `sub` claim in its own indexed column — email can change, `sub` cannot. `name` and `email` are created on first sign-in and refreshed on every later one. App sessions run from a signed, HttpOnly cookie; there is no re-authentication per page load.
+
+**Authorization is what the token actually holds, not what we asked for.** After sign-in, `probe-tool` returns the ability list the engine granted this person — an admin and a viewer signing into the same app get different lists. Console access requires the `CITE_ADMIN_ABILITY` (default `*:read`) or an email in `CITE_ADMIN_EMAILS`. Panels resolve their tools from `tools/list` (never hard-coded names) and hide themselves when the tool is absent or unavailable.
+
+**Two failures treated as normal.** A 401 from the engine sends the person back through sign-in rather than showing an empty dashboard. A scope denial degrades that one panel and leaves the rest of the page working.
+
+**Caching.** Engine reads are cached ~60s per person and tool (tool lists ~5 min), so a render is not a burst of live calls in the engine's audit log.
+
+**The shared `ADMIN_TOKEN` no longer opens the web console.** It remains solely for `/admin/mcp`, because an agent cannot complete a browser sign-in.

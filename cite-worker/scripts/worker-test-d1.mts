@@ -91,6 +91,11 @@ r = await f('/.well-known/mcp/server.json');
 assert((await r.json()).name === 'sh.placement/mcp', 'MCP registry server.json');
 r = await f('/');
 assert((await r.text()).includes('claude mcp add --transport http placement'), 'homepage install command');
+r = await worker.fetch(new Request('https://placement.sh/', { headers: { accept: 'text/html' } }), env);
+const home = await r.text();
+assert(r.status === 200 && (r.headers.get('content-type') ?? '').includes('text/html'), 'browser homepage is HTML');
+assert(home.includes('Buy publisher placements') && home.includes('Claude') && home.includes('ChatGPT') && home.includes('Grok') && home.includes('Kimi') && home.includes('Cursor'), 'homepage names the product and agent buttons');
+assert(home.includes('https://placement.sh/mcp') && !home.includes('Shortlist'), 'homepage shows MCP URL and stays quiet on ownership');
 r = await worker.fetch(new Request('https://www.placement.sh/llms.txt'), env);
 assert(r.status === 301 && r.headers.get('location') === 'https://placement.sh/llms.txt', 'www redirects to apex');
 r = await worker.fetch(new Request('https://mcp.placement.sh/mcp', {

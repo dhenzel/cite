@@ -11,6 +11,7 @@ import { ADMIN_HTML, signInPage } from './admin-ui.js';
 import {
   homepageText, LLMS_TXT, SERVER_NAME, SERVER_VERSION, serverCard, serverJson,
 } from './discovery.js';
+import { homepageHtml } from './homepage.js';
 import { buildAuthUrl, handleCallback, describeOidcFailure, diagnostics, OidcNotConfigured, OidcError } from './oidc.js';
 import {
   readSession, createSession, destroySession, upsertUser, isAdmin,
@@ -1382,6 +1383,12 @@ export default {
     if (mcpPath) return handleAdminMcp(req, env, decodeURIComponent(mcpPath[1]));
     if (url.pathname.startsWith('/admin/api/')) return handleAdminApi(req, env, url.pathname);
     if (url.pathname === '/') {
+      const accept = req.headers.get('accept') ?? '';
+      if (accept.includes('text/html')) {
+        return new Response(homepageHtml(url.origin), {
+          headers: { 'content-type': 'text/html; charset=utf-8', ...CORS },
+        });
+      }
       return new Response(
         homepageText(url.origin),
         { headers: { 'content-type': 'text/plain; charset=utf-8', ...CORS } },

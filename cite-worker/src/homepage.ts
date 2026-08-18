@@ -203,7 +203,7 @@ export const homepageHtml = (origin: string): string => {
   var guides = {
     claude: {
       title: "Claude",
-      open: "https://claude.ai/settings/connectors",
+      open: "https://claude.ai/new#settings/customize-connectors",
       steps: [
         "URL copied. Claude → Customize → Connectors → Add custom connector.",
         "Paste the MCP URL. No OAuth needed for the public tools.",

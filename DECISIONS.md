@@ -103,11 +103,29 @@ The admin MCP was gated by the one shared `ADMIN_TOKEN`: no attribution, and rev
 
 Domain bought and on Cloudflare NS (`brynne` / `lakas`). Public product name is **placement.sh**, not Cite (cite.sh is a competing ChatGPT-citation directory). Worker `cite-mcp` keeps its script name and D1 `sites` tables; Custom Domains `placement.sh`, `www.placement.sh`, and `mcp.placement.sh` are declared in `cite-worker/wrangler.toml`. Operator SSO redirect stays `https://cite-mcp.d-henzel.workers.dev/auth/callback` until the IdP app also lists `https://placement.sh/auth/callback`.
 
+## 2026-08-18 — paid path, emails, crawl+Grok profiles, agent-submitted posts
+
+David: make payments work in the Claude/Grok conversation; set up the emails; research every site so the bot gets more than a niche tag; customer agent writes the post and submits it.
+
+Recorded in `SPEC-PAID-PATH.md`. Settled in that session:
+
+| # | Question | Decision |
+|---|---|---|
+| 1 | How the human pays | Stripe Checkout **link in the chat**. Agent calls `add_credits` → `{checkout_url}`. No card entry in the model, no placement.sh billing dashboard in v1. Landing page after pay is one line: go back and say “paid”. |
+| 2 | Wallet vs per-order Stripe capture | **Prepaid credits + internal hold.** Available/held cents on `accounts`. Capture to us only at T+30 verified. `INSUFFICIENT_CREDIT` always includes a fresh Checkout payload for the shortfall. |
+| 3 | Who writes the post | **The customer’s agent.** `get_writing_brief` + `submit_placement` with finished markdown. Auto-screen returns one machine-actionable error; agent rewrites in-thread. Pitches without a body are `CONTENT_REQUIRED`. |
+| 4 | Site research / Grok crawl | **We fetch, Grok API writes the profile, D1 stores it.** Do not crawl 9k URLs inside a Grok chat. Public summary is brand-scrubbed; private summary is operator-only. Highest score first. |
+| 5 | Emails | Two pipes: Resend from `hello@placement.sh` (buyer: account, credits, order, published, refund). Gmail **drafts** in the Shortlist mailbox for publisher outreach — never From: placement.sh. |
+
+`create_campaign` remaining a stub is now an explicit gap this spec closes (build order in SPEC-PAID-PATH §5).
+
 ## Still open
 
 1. **Domain + trademark check for "Cite"** (§13.1) — **closed as a brand**: ship as placement.sh. Cite remains the repo/worker name.
-2. **Finished posts vs. pitches** (§13.5) — currently finished posts, flagged revisitable.
+2. **Finished posts vs. pitches** (§13.5) — **closed 2026-08-18**: finished posts, implemented via `submit_placement`.
 3. **Ahrefs / Moz / Majestic API access** — verify what Shortlist's licences actually include (API vs. UI-only).
 4. **Link-attribute backfill** — dofollow/sponsored unknown across 9,453 sites; mandatory field before launch (§12b).
 5. **Build team** — who drives the v1 build (agent-driven by David, Shortlist devs, or a hire).
 6. **Shortlist's own repositioning** — independent open question; not resolved by shipping Cite.
+7. **Which Shortlist mailbox / named sender** owns v1 Gmail drafts.
+8. **xAI vs other LLM** for enrichment if Grok API access is awkward — prompt and JSON shape stay; the vendor is swappable.

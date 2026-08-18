@@ -306,9 +306,10 @@ Build the shortest path that takes real money and delivers one real link.
    - **Gaps to backfill at import:** `link_attributes_offered` unknown for essentially all 9,453 sites (§12b requires this explicit per site — at this scale the backfill is a real project, not a cleanup pass), `turnaround_sla_days` absent, ~1,350 rows unpriced, metrics ~16 months stale.
 2. **MCP server** with `search_sites`, `get_site` on the free tier — read-only, rate-limited, watermarked. This is the marketing; ship it before anything else is buyable.
    - **Prototype exists (2026-08-15):** `cite-mcp/` — stdio MCP server over the full imported inventory (SQLite), with `search_sites`, `get_site`, `estimate` (v0 allocator taste) and `inventory_stats`; blind placements enforced by a field whitelist + runtime leak check; content enrichment pipeline (`src/enrich.ts`) that stores brand-scrubbed summaries of what each site writes about (11 demo sites enriched; full crawl runs outside the sandbox). See `cite-mcp/README.md`.
-3. **Stripe prepaid credits** + balance debit at order creation.
-4. **`create_campaign` + a v1 allocator** running pure cold-start composite-score-per-dollar with all five hard constraints enforced in code. No lift model yet.
-5. **`create_order`** with idempotency, auto-screen (word count, topic match, anchor check, duplicate check), and the **Gmail draft** into the team inbox.
+   - **2026-08-18:** replace bag-of-words enrichment with fetch-then-Grok profiles (`SPEC-PAID-PATH.md` §3). Public `content_summary` stays scrubbed; `get_writing_brief` is what the customer agent writes against.
+3. **Stripe prepaid credits** + balance debit at order creation. **→ `SPEC-PAID-PATH.md`:** Checkout link in the agent chat (`add_credits`), wallet with available/held cents, capture only at T+30 verified.
+4. **`create_campaign` + a v1 allocator** running pure cold-start composite-score-per-dollar with all five hard constraints enforced in code. No lift model yet. Returns writing-brief refs so the customer agent can draft.
+5. **`submit_placement` (was `create_order`)** with idempotency, auto-screen (word count, topic match, anchor check, duplicate check), **finished post from the customer’s agent**, and the **Gmail draft** into the team inbox. See `SPEC-PAID-PATH.md` §4.
 6. **Order state machine + webhooks** — enough states to be honest with the agent about where an order actually is.
 7. **Verification crawler** at T+7 and T+30, and the **refund path** on `site_rejected` / `link_lost_at_verification`.
 8. **`LiftObservation` collection starts on day one, internal only** — even with no model consuming it yet. The dataset is the moat and it only exists if you start writing rows before you need them.

@@ -88,7 +88,11 @@ assert(r.status === 404, 'oauth discovery probes still 404');
 r = await f('/llms.txt');
 assert(r.status === 200 && (await r.text()).includes('placement.sh'), 'llms.txt served for agents');
 r = await f('/.well-known/mcp/server.json');
-assert((await r.json()).name === 'sh.placement/mcp', 'MCP registry server.json');
+{
+  const card = await r.json();
+  assert(card.name === 'sh.placement/mcp', 'MCP registry server.json');
+  assert(!JSON.stringify(card).includes('github.com') && !card.repository, 'server card does not expose a GitHub repo');
+}
 r = await f('/');
 assert((await r.text()).includes('claude mcp add --transport http placement'), 'homepage install command');
 r = await worker.fetch(new Request('https://placement.sh/', { headers: { accept: 'text/html' } }), env);

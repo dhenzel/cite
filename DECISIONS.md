@@ -113,6 +113,7 @@ Recorded in `SPEC-PAID-PATH.md`. Settled in that session:
 |---|---|---|
 | 1 | How the human pays | Stripe Checkout **link in the chat**. Agent calls `add_credits` → `{checkout_url}`. No card entry in the model, no placement.sh billing dashboard in v1. Landing page after pay is one line: go back and say “paid”. |
 | 2 | Wallet vs per-order Stripe capture | **Prepaid credits + internal hold.** Available/held cents on `accounts`. Capture to us only at T+30 verified. `INSUFFICIENT_CREDIT` always includes a fresh Checkout payload for the shortfall. |
+| 2b | Which Stripe account | **Shortlist’s existing Stripe for v1.** Metadata `product=placement.sh` on every session so we don’t mix with other Shortlist charges. Checkout branded placement.sh. Dedicated account later if needed. |
 | 3 | Who writes the post | **The customer’s agent.** `get_writing_brief` + `submit_placement` with finished markdown. Auto-screen returns one machine-actionable error; agent rewrites in-thread. Pitches without a body are `CONTENT_REQUIRED`. |
 | 4 | Site research / Grok crawl | **We fetch, Grok API writes the profile, D1 stores it.** Do not crawl 9k URLs inside a Grok chat. Public summary is brand-scrubbed; private summary is operator-only. Highest score first. |
 | 5 | Emails | Two pipes: Resend from `hello@placement.sh` (buyer: account, credits, order, published, refund). Gmail **drafts** in the Shortlist mailbox for publisher outreach — never From: placement.sh. |

@@ -75,7 +75,9 @@ Happy path, one conversation:
 ### Stripe implementation notes
 
 - Product: one Stripe product “placement.sh credits”; Checkout line item = pack.
-- Webhook `checkout.session.completed` (and `async_payment_succeeded`): credit wallet, send `credits.added` email, mark `stripe_customer_id`.
+- **Account (v1):** use **Shortlist’s existing Stripe**. Do not open a new Stripe account to start. Tag every Session/PaymentIntent `metadata.product = placement.sh` so webhooks ignore unrelated Shortlist charges. Statement descriptor / Checkout title: `PLACEMENT.SH` (not Shortlist). Split to a dedicated account later if volume warrants it.
+- Restricted API key (Checkout + Customers + Webhooks only) — the Worker must not see the rest of Shortlist’s Stripe.
+- Webhook `checkout.session.completed` (and `async_payment_succeeded`): credit wallet **only if** `metadata.product === "placement.sh"`, send `credits.added` email, mark `stripe_customer_id`.
 - Webhook secret in Worker secrets (`STRIPE_WEBHOOK_SECRET`). Never in wrangler.toml.
 - Success/cancel URLs: `https://placement.sh/paid?session_id={CHECKOUT_SESSION_ID}` — a **dead-simple** page: “Credits added. Go back to your agent and say ‘paid’.” No dashboard, no login. Agents cannot complete OAuth; this page exists so the human has somewhere to land.
 - Customer Portal is **not** v1. Card-on-file / auto-top-up is v2.
@@ -253,7 +255,7 @@ Help, homepage agent panels, and `skills/placement/SKILL.md` update when step 1 
 ## 6. Secrets / env (Worker)
 
 ```
-STRIPE_SECRET_KEY
+STRIPE_SECRET_KEY           # Restricted key on Shortlist's Stripe (v1)
 STRIPE_WEBHOOK_SECRET
 RESEND_API_KEY
 EMAIL_FROM=hello@placement.sh

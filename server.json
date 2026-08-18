@@ -1,0 +1,16 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "sh.placement/mcp",
+  "description": "Buy publisher placements so a URL gets cited in Google, ChatGPT, Perplexity, and AI Overviews. An agent states a budget; placement.sh books the campaign.",
+  "version": "0.3.0",
+  "repository": {
+    "url": "https://github.com/dhenzel/cite",
+    "source": "github"
+  },
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.placement.sh/mcp"
+    }
+  ]
+}

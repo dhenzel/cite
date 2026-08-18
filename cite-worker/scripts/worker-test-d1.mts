@@ -37,9 +37,9 @@ const assert = (cond: unknown, msg: string) => { if (!cond) throw new Error(`FAI
 
 // public surface
 let r = await f('/health');
-assert(r.status === 200 && (await r.json()).sites === 2, 'health counts sites from D1');
+assert(r.status === 200 && (await r.json()).publishers === 2, 'health counts publishers from D1');
 r = await f('/mcp', { method: 'POST', headers: { 'content-type': 'application/json' },
-  body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'search_sites', arguments: { topics: ['finance'] } } }) });
+  body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'search_publishers', arguments: { topics: ['finance'] } } }) });
 let text = (await r.json()).result.content[0].text;
 assert(text.includes('cs_aaa111bbb222'), 'search finds enriched site');
 assert(!/secret-example|owner@|seller_price|markup/.test(text), 'public payload leaks nothing private');
@@ -85,6 +85,12 @@ r = await f('/admin');
 assert(r.status === 200 && (await r.text()).includes('operator console'), 'admin UI serves');
 r = await f('/.well-known/oauth-protected-resource');
 assert(r.status === 404, 'oauth discovery probes still 404');
+r = await f('/llms.txt');
+assert(r.status === 200 && (await r.text()).includes('placement.sh'), 'llms.txt served for agents');
+r = await f('/.well-known/mcp/server.json');
+assert((await r.json()).name === 'sh.placement/mcp', 'MCP registry server.json');
+r = await f('/');
+assert((await r.text()).includes('claude mcp add --transport http placement'), 'homepage install command');
 
 console.log('\nall checks passed');
 
@@ -104,21 +110,22 @@ const call = async (tool: string, args: Record<string, unknown> = {}, key?: stri
 };
 
 // metrics ladder
-let g = await call('get_site', { site_id: 'cs_aaa111bbb222' });
+let g = await call('get_publisher', { publisher_id: 'cs_aaa111bbb222' });
 assert(g.ahrefs_domain_rating === 88, 'exact Ahrefs DR exposed');
 assert(g.da_band === 'DA 50–59', `DA banded not exact (got ${g.da_band})`);
 assert(g.trust_ratio === 'strong', `TF/CF exposed as a band (got ${g.trust_ratio})`);
 assert(!('da' in g) && !('tf' in g) && !('traffic' in g), 'exact DA/TF/traffic absent from public payload');
 assert(typeof g.metrics_attribution === 'string', 'Ahrefs attribution present');
-assert(!JSON.stringify(g).includes('secret-example'), 'domain still blind in get_site');
+assert(g.placement_score === 88 && !('cite_score' in g) && !('site_id' in g), 'public fields use publisher/placement_score');
+assert(!JSON.stringify(g).includes('secret-example'), 'domain still blind in get_publisher');
 
 // free-site filters + link_exchange exclusion
-let s = await call('search_sites', { cost_type: 'free' });
-const ids = s.sites.map((x: { site_id: string }) => x.site_id);
-assert(ids.includes('cs_free00self01'), 'free self_serve site returned by cost_type filter');
+let s = await call('search_publishers', { cost_type: 'free' });
+const ids = s.publishers.map((x: { publisher_id: string }) => x.publisher_id);
+assert(ids.includes('cs_free00self01'), 'free self_serve publisher returned by cost_type filter');
 assert(!ids.includes('cs_exchange0001'), 'link_exchange excluded from search by default');
-s = await call('search_sites', {});
-assert(!s.sites.map((x: { site_id: string }) => x.site_id).includes('cs_exchange0001'), 'link_exchange excluded from default search');
+s = await call('search_publishers', {});
+assert(!s.publishers.map((x: { publisher_id: string }) => x.publisher_id).includes('cs_exchange0001'), 'link_exchange excluded from default search');
 
 // anonymous cap
 assert(s.result_limit === 10, `anonymous result cap is 10 (got ${s.result_limit})`);
@@ -131,21 +138,28 @@ assert(typeof a.api_key === 'string' && a.api_key.startsWith('ck_'), 'register_a
 const apiKey = a.api_key;
 const again = await call('register_account', { email: 'agent@example.com' });
 assert(again.api_key === apiKey, 'same email returns the same key (case-insensitive)');
-s = await call('search_sites', {}, apiKey);
+s = await call('search_publishers', {}, apiKey);
 assert(s.result_limit === 50, 'account key raises result cap to 50');
 let st = await call('account_status', {}, apiKey);
 assert(st.tier === 'free' && st.free_placements_remaining === 10, 'account_status reports quota');
 
+let h = await call('help');
+assert(h.call_first === 'estimate' && h.product === 'placement.sh', 'help orients agents');
+let camp = await call('create_campaign', { target_url: 'https://buyer.test', topics: ['finance'], budget: 4000 });
+assert(camp.error === 'INSUFFICIENT_CREDIT', 'paid campaign is a credit stub');
+let est = await call('estimate', { topics: ['finance'], budget: 4000, target_url: 'https://buyer.test/pricing' });
+assert(est.target_url === 'https://buyer.test/pricing' && Array.isArray(est.plan), 'estimate accepts target_url');
+
 // free placement claim
-let c = await call('claim_free_placement', { site_id: 'cs_free00self01', target_url: 'https://buyer.test/pricing' });
+let c = await call('claim_free_placement', { publisher_id: 'cs_free00self01', target_url: 'https://buyer.test/pricing' });
 assert(c.error === 'ACCOUNT_REQUIRED', 'claim requires an account');
-c = await call('claim_free_placement', { site_id: 'cs_free00self01', target_url: 'https://buyer.test/pricing' }, apiKey);
+c = await call('claim_free_placement', { publisher_id: 'cs_free00self01', target_url: 'https://buyer.test/pricing' }, apiKey);
 assert(c.claimed === true && c.domain === 'free-platform.test', 'self_serve claim releases the domain so the agent can publish');
 assert(typeof c.agent_instructions === 'string', 'claim returns the agent playbook');
-c = await call('claim_free_placement', { site_id: 'cs_aaa111bbb222', target_url: 'https://buyer.test/x' }, apiKey);
-assert(c.error === 'NOT_FREE_INVENTORY', 'paid site rejects a free claim');
-c = await call('claim_free_placement', { site_id: 'cs_exchange0001', target_url: 'https://buyer.test/x' }, apiKey);
-assert(c.error === 'SITE_UNAVAILABLE', 'link_exchange site cannot be claimed');
+c = await call('claim_free_placement', { publisher_id: 'cs_aaa111bbb222', target_url: 'https://buyer.test/x' }, apiKey);
+assert(c.error === 'NOT_FREE_INVENTORY', 'paid publisher rejects a free claim');
+c = await call('claim_free_placement', { publisher_id: 'cs_exchange0001', target_url: 'https://buyer.test/x' }, apiKey);
+assert(c.error === 'PUBLISHER_UNAVAILABLE', 'link_exchange publisher cannot be claimed');
 
 // query log populated
 const logged = sq.prepare('SELECT COUNT(*) AS n FROM query_log').get() as { n: number };

@@ -9,7 +9,7 @@ export function signInPage(opts: { error?: string; configured?: boolean; tokenFa
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Cite — Sign in</title>
+<title>placement.sh — Sign in</title>
 <style>
   :root { --bg:#FBFAF8; --surface:#fff; --ink:#1A2230; --muted:#616C7E; --line:#E3E1DB;
           --accent:#14655A; --accent-ink:#fff; --bad:#A33A2E; --bad-soft:rgba(163,58,46,.08); }
@@ -44,7 +44,7 @@ export function signInPage(opts: { error?: string; configured?: boolean; tokenFa
 </head>
 <body>
   <div class="box">
-    <h1>Cite operator console</h1>
+    <h1>placement.sh operator console</h1>
     <p class="sub">Inventory, pricing and margin for the Shortlist publisher network.</p>
     ${error ? `<p class="err">${esc(error)}</p>` : ''}
     ${configured
@@ -72,7 +72,7 @@ export const ADMIN_HTML = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Cite — Operator Console</title>
+<title>placement.sh — Operator Console</title>
 <style>
   :root { --bg:#10141d; --surface:#171c29; --line:#2a3145; --ink:#e8eaf0; --muted:#98a0b3;
           --accent:#8fa8ff; --good:#4fc08d; --bad:#e0766c; --warn:#d8a94e; }
@@ -150,7 +150,7 @@ export const ADMIN_HTML = `<!doctype html>
 <body>
 <div id="app" class="wrap">
   <header>
-    <h1>Cite <small>operator console</small></h1>
+    <h1>placement.sh <small>operator console</small></h1>
     <div class="stats" id="stats"></div>
     <div class="whoami" id="whoami"></div>
   </header>
@@ -226,7 +226,7 @@ export const ADMIN_HTML = `<!doctype html>
 
   <div id="pane-key" style="display:none">
     <section>
-      <h3>Connect your agent to the Cite back office</h3>
+      <h3>Connect your agent to the placement.sh back office</h3>
       <p class="prose">Create a personal key below, then paste one command into your terminal. After that you
       can just talk to Claude — <em>"set link attribute to dofollow for every finance site above DR 60"</em>,
       <em>"which sites have no price?"</em>, <em>"how many queries did we get this week?"</em> — and it edits
@@ -379,7 +379,7 @@ async function mintKey() {
     + '<code id="k_cmd">' + esc(d.connect_command) + '</code>'
     + '<button class="copy" data-copy="k_cmd">Copy command</button>'
     + '<p class="prose" style="margin-top:14px"><b>2.</b> Start Claude and ask it something, e.g. '
-    + '<em>"search Cite inventory for finance sites above DR 60 and show me the margin"</em>.</p>'
+    + '<em>"search placement.sh inventory for finance publishers above DR 60 and show me the margin"</em>.</p>'
     + '<p class="prose sub">For a claude.ai custom connector, use this URL instead (the key is in the path, '
     + 'because connectors cannot send headers):</p>'
     + '<code id="k_url">' + esc(d.connector_url) + '</code>'

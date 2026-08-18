@@ -1,14 +1,16 @@
-// Cite v0 — hosted MCP endpoint + operator console (Cloudflare Worker).
+// placement.sh — hosted MCP endpoint + operator console (Cloudflare Worker).
 //
-// Public surface (no auth): POST /mcp (MCP Streamable HTTP), GET /, /health.
-//   Reads whitelisted fields from D1 — domains, contacts, seller prices and
-//   markup are never serialized here (blind placements, SPEC §11).
+// Public surface (no auth): POST /mcp (MCP Streamable HTTP), GET /, /health,
+//   /llms.txt, /.well-known/mcp/*. Reads whitelisted fields from D1 — domains,
+//   contacts, seller prices and markup are never serialized here (blind
+//   placements). Public vocabulary is publisher / placement, never "site".
 // Operator surface (bearer ADMIN_TOKEN): GET /admin (UI), /admin/api/*.
-//   Full private rows: domain, contacts, seller price, per-site markup,
-//   computed listed price + margin (SPEC §16).
 //
-// Connect:  claude mcp add --transport http cite https://<worker-url>/mcp
+// Connect:  claude mcp add --transport http placement https://mcp.placement.sh/mcp
 import { ADMIN_HTML, signInPage } from './admin-ui.js';
+import {
+  homepageText, LLMS_TXT, SERVER_NAME, SERVER_VERSION, serverCard, serverJson,
+} from './discovery.js';
 import { buildAuthUrl, handleCallback, describeOidcFailure, diagnostics, OidcNotConfigured, OidcError } from './oidc.js';
 import {
   readSession, createSession, destroySession, upsertUser, isAdmin,
@@ -84,14 +86,14 @@ const scoreComponents = (r: Row) => ({
 const FREE_MODE_NOTES: Record<string, string> = {
   self_serve: 'Free, self-serve: an account can be created and the post published directly — no publisher outreach needed.',
   apply_editorial: 'Free, but by editorial application: a pitch is submitted and acceptance is not guaranteed.',
-  link_exchange: 'Requires a reciprocal link from your own site. Excluded from search by default.',
+  link_exchange: 'Requires a reciprocal link from your own publisher. Excluded from search by default.',
   unavailable: 'Not currently accepting placements.',
 };
 
 const pub = (r: Row, detail = false) => {
   const base: Row = {
-    site_id: r.id,
-    cite_score: r.cite_score,
+    publisher_id: r.id,
+    placement_score: r.cite_score,
     niche: r.niche,
     subniche: r.subniche || undefined,
     // Ahrefs requires the metric keep its name and carry attribution.
@@ -113,29 +115,57 @@ const pub = (r: Row, detail = false) => {
     max_links_per_post: r.max_links_per_post ?? 'unknown',
     turnaround_sla_days: r.turnaround_sla_days ?? 'unknown',
     requires_reciprocal_link: !!r.requires_reciprocal_link,
-    how_this_works: FREE_MODE_NOTES[(r.acquisition_mode as string) ?? ''] ?? 'Paid placement fulfilled by Cite.',
+    how_this_works: FREE_MODE_NOTES[(r.acquisition_mode as string) ?? ''] ?? 'Paid placement fulfilled by placement.sh.',
     agent_instructions: r.agent_instructions ?? undefined,
     content_summary: r.summary ?? undefined,
     recent_post_titles: r.recent_titles ? JSON.parse(r.recent_titles as string) : undefined,
     metrics_attribution: 'Domain Rating (DR) via Ahrefs. DA shown as a band; traffic as a band. Exact vendor values are not redistributed.',
-    note: 'Domain is revealed as published_url when the placement is delivered (blind placements).',
+    note: 'Publisher domain is revealed as published_url when the placement is delivered (blind placements).',
   };
 };
 
-// ---------- MCP tools ----------
+const publisherIdOf = (args: Row): string | undefined => {
+  const v = args.publisher_id;
+  return typeof v === 'string' && v.length > 0 ? v : undefined;
+};
+
+// ---------- MCP tools (public names: publisher / placement, never "site") ----------
 const tools = [
   {
-    name: 'search_sites',
-    description: 'Search Cite placement inventory. Returns anonymized site handles — domains are revealed only when a placement is delivered. Filter by topic, Cite Score, price, and traffic.',
+    name: 'help',
+    description: 'When to use placement.sh, which tool to call first, and a worked example. Call this if you are unsure how to buy publisher placements so a URL gets cited.',
+    inputSchema: { type: 'object', properties: {} },
+    annotations: { title: 'Help', readOnlyHint: true, destructiveHint: false },
+  },
+  {
+    name: 'estimate',
+    description: 'First tool to call. Sketch what a budget buys: placement counts across Placement Score bands for given topics so a target URL can get cited (ChatGPT, Perplexity, Google AI Overviews, Google). No commitment, no reserved inventory, no card.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        topics: { type: 'array', items: { type: 'string' }, description: 'Topics the publisher should write about, e.g. ["fintech","business"]' },
+        budget: { type: 'number', exclusiveMinimum: 0 },
+        timeframe_weeks: { type: 'number', exclusiveMinimum: 0 },
+        target_url: { type: 'string', description: 'The URL you want cited' },
+        risk_tolerance: { type: 'string', enum: ['conservative', 'balanced', 'aggressive'] },
+      },
+      required: ['topics', 'budget'],
+    },
+    annotations: { title: 'Estimate a campaign', readOnlyHint: true, destructiveHint: false },
+  },
+  {
+    name: 'search_publishers',
+    description: 'Search placement.sh inventory of bought publisher placements. Returns anonymized publisher handles — domains are revealed only when a placement is delivered. Filter by topic, Placement Score, price, traffic, and link_attribute. Prefer estimate for campaigns; use this to inspect.',
     inputSchema: {
       type: 'object',
       properties: {
         topics: { type: 'array', items: { type: 'string' }, description: 'Topic/niche terms, e.g. ["fintech","business"]' },
-        text: { type: 'string', description: 'Free-text match against what the site writes about' },
+        text: { type: 'string', description: 'Free-text match against what the publisher writes about' },
         min_score: { type: 'number', minimum: 0, maximum: 100 },
         max_price: { type: 'number', exclusiveMinimum: 0 },
         min_traffic_band: { type: 'string', enum: BAND_ORDER.slice(1) },
-        cost_type: { type: 'string', enum: ['paid', 'free'], description: 'free = no placement cost. Free inventory needs no card — the way to try Cite.' },
+        link_attribute: { type: 'string', enum: LINK_ATTRS, description: 'Explicit rel on the bought link' },
+        cost_type: { type: 'string', enum: ['paid', 'free'], description: 'free = no placement cost. Free inventory needs no card — the way to try placement.sh.' },
         acquisition_mode: {
           type: 'string',
           enum: ['paid_placement', 'self_serve', 'apply_editorial'],
@@ -144,56 +174,65 @@ const tools = [
         limit: { type: 'integer', minimum: 1, maximum: MAX_RESULTS },
       },
     },
+    annotations: { title: 'Search publishers', readOnlyHint: true, destructiveHint: false },
   },
   {
-    name: 'get_site',
-    description: 'Full anonymized profile for one site handle: score, pricing tiers, content summary, what it writes about, posting constraints.',
-    inputSchema: { type: 'object', properties: { site_id: { type: 'string' } }, required: ['site_id'] },
-  },
-  {
-    name: 'estimate',
-    description: 'Sketch what a budget buys: placement counts across Cite Score bands for given topics. No commitment, no reserved inventory.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        topics: { type: 'array', items: { type: 'string' } },
-        budget: { type: 'number', exclusiveMinimum: 0 },
-        risk_tolerance: { type: 'string', enum: ['conservative', 'balanced', 'aggressive'] },
-      },
-      required: ['topics', 'budget'],
-    },
+    name: 'get_publisher',
+    description: 'Full anonymized profile for one publisher handle: Placement Score, pricing tiers, content summary, what it writes about, posting constraints, explicit link_attribute.',
+    inputSchema: { type: 'object', properties: { publisher_id: { type: 'string' } }, required: ['publisher_id'] },
+    annotations: { title: 'Get publisher', readOnlyHint: true, destructiveHint: false },
   },
   {
     name: 'inventory_stats',
-    description: 'Aggregate view of Cite inventory: counts by niche, Cite Score band, and free vs paid. No site identities.',
+    description: 'Aggregate view of placement.sh inventory: counts by niche, Placement Score band, and free vs paid. No publisher identities.',
     inputSchema: { type: 'object', properties: {} },
+    annotations: { title: 'Inventory stats', readOnlyHint: true, destructiveHint: false },
   },
   {
     name: 'register_account',
-    description: 'Create a Cite account and get an API key. Free — takes an email, no card. Raises your result and quota limits and lets you claim free placements. Pass the key as "Authorization: Bearer <key>" on later calls.',
+    description: 'Create a placement.sh account and get an API key. Free — takes an email, no card. Raises your result and quota limits and lets you claim free placements. Pass the key as "Authorization: Bearer <key>" on later calls.',
     inputSchema: {
       type: 'object',
       properties: { email: { type: 'string', description: 'Contact email for the account' } },
       required: ['email'],
     },
+    annotations: { title: 'Register account', readOnlyHint: false, destructiveHint: false },
   },
   {
     name: 'account_status',
-    description: 'Your account tier, quota used and remaining, and how to upgrade for paid placements.',
+    description: 'Your account tier, quota used and remaining, and how to upgrade for paid (bought) placements.',
     inputSchema: { type: 'object', properties: {} },
+    annotations: { title: 'Account status', readOnlyHint: true, destructiveHint: false },
   },
   {
     name: 'claim_free_placement',
-    description: 'Claim a free placement on a free site (cost_type=free). Requires an account (register_account). Returns the agent playbook for that site; for self_serve sites the domain is released so you can publish there yourself.',
+    description: 'Claim a free placement on free inventory (cost_type=free). Requires an account (register_account). Returns the agent playbook for that publisher; for self_serve publishers the domain is released so you can publish there yourself.',
     inputSchema: {
       type: 'object',
       properties: {
-        site_id: { type: 'string' },
+        publisher_id: { type: 'string' },
         target_url: { type: 'string', description: 'The URL you want cited' },
         anchor_text: { type: 'string' },
       },
-      required: ['site_id', 'target_url'],
+      required: ['publisher_id', 'target_url'],
     },
+    annotations: { title: 'Claim free placement', readOnlyHint: false, destructiveHint: false },
+  },
+  {
+    name: 'create_campaign',
+    description: 'Book a paid campaign: target URL, topics, budget, timeframe, risk. Funds are held until the link is live and indexed. Not enabled until a card is on file.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        target_url: { type: 'string' },
+        topics: { type: 'array', items: { type: 'string' } },
+        budget: { type: 'number', exclusiveMinimum: 0 },
+        timeframe_weeks: { type: 'number' },
+        risk_tolerance: { type: 'string', enum: ['conservative', 'balanced', 'aggressive'] },
+      },
+      required: ['target_url', 'topics', 'budget'],
+    },
+    annotations: { title: 'Create campaign', readOnlyHint: false, destructiveHint: false },
   },
 ];
 
@@ -211,7 +250,21 @@ export interface Account {
 
 async function runTool(env: Env, name: string, args: Row, account: Account | null, maxResults: number): Promise<unknown> {
   switch (name) {
-    case 'search_sites': {
+    case 'help':
+      return {
+        product: SERVER_NAME,
+        what_it_is: 'A marketplace for bought publisher placements. An agent states an intent (URL, topics, budget); placement.sh books the campaign. Outcome: the URL can get cited in Google, ChatGPT, Perplexity, and AI Overviews. Mechanism: paid placements, not earned media.',
+        call_first: 'estimate',
+        then: ['search_publishers / get_publisher to inspect', 'register_account (free, no card) to raise limits', 'create_campaign once a card is on file'],
+        example: {
+          user: 'Get https://example.com/pricing cited on fintech publishers, $4000, 8 weeks, conservative.',
+          tool: 'estimate',
+          arguments: { target_url: 'https://example.com/pricing', topics: ['fintech', 'business'], budget: 4000, timeframe_weeks: 8, risk_tolerance: 'conservative' },
+        },
+        connect: 'claude mcp add --transport http placement https://mcp.placement.sh/mcp',
+        guarantee: 'Paid: link live and indexed at T+30 or refund. Citations/lift are measured, never promised.',
+      };
+    case 'search_publishers': {
       const topics = (args.topics as string[] | undefined) ?? [];
       // link_exchange (reciprocal-link obligation) and unavailable are never
       // returned — an agent buying blind cannot honour a link-back deal.
@@ -229,6 +282,7 @@ async function runTool(env: Env, name: string, args: Row, account: Account | nul
         params.push(`%${args.text}%`, `%${args.text}%`, `%${args.text}%`);
       }
       if (args.min_score != null) { clauses.push('s.cite_score >= ?'); params.push(args.min_score); }
+      if (args.link_attribute) { clauses.push('s.link_attribute = ?'); params.push(args.link_attribute); }
       if (args.max_price != null) { clauses.push('s.listed_price <= ?'); params.push(args.max_price); }
       if (args.min_traffic_band) {
         const allowed = BAND_ORDER.slice(BAND_ORDER.indexOf(args.min_traffic_band as string));
@@ -244,20 +298,22 @@ async function runTool(env: Env, name: string, args: Row, account: Account | nul
       `).bind(...params, limit).all()).results as Row[];
       return {
         result_count: rows.length,
-        note: 'Handles are anonymized. Domains are revealed only at delivery; buy on cite_score, Ahrefs DR, topics, traffic_band and price — backed by the live-and-indexed-at-T+30-or-refund guarantee.',
+        note: 'Handles are anonymized. Domains are revealed only at delivery; buy on placement_score, Ahrefs DR, topics, traffic_band, link_attribute and price — backed by the live-and-indexed-at-T+30-or-refund guarantee.',
         free_inventory_hint: account
           ? undefined
           : 'Free placements (cost_type="free") need no card. register_account with an email to claim them and to raise result limits.',
         result_limit: maxResults,
-        sites: rows.map((r) => pub(r)),
+        publishers: rows.map((r) => pub(r)),
       };
     }
-    case 'get_site': {
+    case 'get_publisher': {
+      const publisher_id = publisherIdOf(args);
+      if (!publisher_id) return { error: 'INVALID_ARGUMENT', message: 'publisher_id is required' };
       const row = (await env.DB.prepare(`
         SELECT s.*, c.summary, c.writes_about, c.recent_titles
         FROM sites s LEFT JOIN site_content c ON c.site_id = s.id WHERE s.id = ?
-      `).bind(args.site_id).first()) as Row | null;
-      return row ? pub(row, true) : { error: 'SITE_NOT_FOUND', site_id: args.site_id };
+      `).bind(publisher_id).first()) as Row | null;
+      return row ? pub(row, true) : { error: 'PUBLISHER_NOT_FOUND', publisher_id };
     }
     case 'estimate': {
       const topics = args.topics as string[];
@@ -286,27 +342,27 @@ async function runTool(env: Env, name: string, args: Row, account: Account | nul
           let count = 0, spent = 0;
           for (const p of prices) { if (spent + p > alloc) break; spent += p; count++; }
           remaining -= spent;
-          return { score_band: b.name, eligible_sites: prices.length, planned_placements: count, planned_spend: spent };
+          return { score_band: b.name, eligible_publishers: prices.length, planned_placements: count, planned_spend: spent };
         })
         .filter((p) => p.planned_placements > 0);
       const total = plan.reduce((a, p) => a + p.planned_placements, 0);
       const spend = plan.reduce((a, p) => a + p.planned_spend, 0);
       return {
-        topics, budget, risk_tolerance: risk,
-        constraints_applied: [`per-placement cap $${cap}`, `min cite_score ${minScore}`, 'spend spread across score bands'],
+        topics, budget, target_url: args.target_url ?? undefined, timeframe_weeks: args.timeframe_weeks ?? undefined, risk_tolerance: risk,
+        constraints_applied: [`per-placement cap $${cap}`, `min placement_score ${minScore}`, 'spend spread across score bands'],
         plan, total_planned_placements: total, total_planned_spend: spend, unallocated_budget: budget - spend,
-        note: total === 0 ? 'No eligible inventory for these filters — widen topics or raise budget.' : 'Estimate only. create_campaign (funded tier) turns this into a real allocation.',
+        note: total === 0 ? 'No eligible inventory for these filters — widen topics or raise budget.' : 'Estimate only. create_campaign (funded tier) turns this into a real allocation. These are bought placements, not earned media.',
       };
     }
     case 'inventory_stats': {
       const byNiche = (await env.DB.prepare(`
-        SELECT niche, COUNT(*) AS sites, ROUND(AVG(cite_score)) AS avg_score, MIN(listed_price) AS from_price
+        SELECT niche, COUNT(*) AS publishers, ROUND(AVG(cite_score)) AS avg_score, MIN(listed_price) AS from_price
         FROM sites WHERE status='active' AND listed_price IS NOT NULL AND niche IS NOT NULL
-        GROUP BY niche ORDER BY sites DESC LIMIT 15
+        GROUP BY niche ORDER BY publishers DESC LIMIT 15
       `).all()).results;
       const byBand = (await env.DB.prepare(`
         SELECT CASE WHEN cite_score>=80 THEN '80–100' WHEN cite_score>=60 THEN '60–79'
-                    WHEN cite_score>=40 THEN '40–59' ELSE '<40' END AS band, COUNT(*) AS sites
+                    WHEN cite_score>=40 THEN '40–59' ELSE '<40' END AS band, COUNT(*) AS publishers
         FROM sites WHERE status='active' AND listed_price IS NOT NULL
         GROUP BY band ORDER BY MIN(cite_score) DESC
       `).all()).results;
@@ -316,12 +372,12 @@ async function runTool(env: Env, name: string, args: Row, account: Account | nul
       const byCost = (await env.DB.prepare(`
         SELECT COALESCE(cost_type,'paid') AS cost_type,
                COALESCE(acquisition_mode,'paid_placement') AS acquisition_mode,
-               COUNT(*) AS sites
+               COUNT(*) AS publishers
         FROM sites WHERE status='active'
-        GROUP BY 1,2 ORDER BY sites DESC
+        GROUP BY 1,2 ORDER BY publishers DESC
       `).all()).results;
       return {
-        purchasable_sites: total.n,
+        purchasable_publishers: total.n,
         by_niche: byNiche,
         by_score_band: byBand,
         by_cost_and_mode: byCost,
@@ -390,38 +446,49 @@ async function runTool(env: Env, name: string, args: Row, account: Account | nul
       if (account.orders_used >= account.quota) {
         return { error: 'QUOTA_EXCEEDED', quota: account.quota, message: 'Free placement quota used up. Paid placements require a card (not enabled in this release).' };
       }
-      const site = (await env.DB.prepare('SELECT * FROM sites WHERE id = ?').bind(args.site_id).first()) as Row | null;
-      if (!site) return { error: 'SITE_NOT_FOUND', site_id: args.site_id };
-      if ((site.cost_type ?? 'paid') !== 'free') {
-        return { error: 'NOT_FREE_INVENTORY', site_id: args.site_id, message: 'This site is a paid placement. Free claims only apply to cost_type="free".' };
+      const publisher_id = publisherIdOf(args);
+      if (!publisher_id) return { error: 'INVALID_ARGUMENT', message: 'publisher_id is required' };
+      const publisher = (await env.DB.prepare('SELECT * FROM sites WHERE id = ?').bind(publisher_id).first()) as Row | null;
+      if (!publisher) return { error: 'PUBLISHER_NOT_FOUND', publisher_id };
+      if ((publisher.cost_type ?? 'paid') !== 'free') {
+        return { error: 'NOT_FREE_INVENTORY', publisher_id, message: 'This publisher is a paid placement. Free claims only apply to cost_type="free".' };
       }
-      if (site.acquisition_mode === 'link_exchange' || site.acquisition_mode === 'unavailable') {
-        return { error: 'SITE_UNAVAILABLE', acquisition_mode: site.acquisition_mode };
+      if (publisher.acquisition_mode === 'link_exchange' || publisher.acquisition_mode === 'unavailable') {
+        return { error: 'PUBLISHER_UNAVAILABLE', acquisition_mode: publisher.acquisition_mode };
       }
       await env.DB.prepare(`
         INSERT INTO free_orders (site_id, api_key, target_url, anchor_text, state, created_at)
         VALUES (?, ?, ?, ?, 'claimed', datetime('now'))
-      `).bind(site.id, account.api_key, args.target_url, args.anchor_text ?? null).run();
+      `).bind(publisher.id, account.api_key, args.target_url, args.anchor_text ?? null).run();
       await env.DB.prepare('UPDATE accounts SET orders_used = orders_used + 1 WHERE api_key = ?')
         .bind(account.api_key).run();
-      const selfServe = site.acquisition_mode === 'self_serve';
+      const selfServe = publisher.acquisition_mode === 'self_serve';
       return {
         claimed: true,
-        site_id: site.id,
-        acquisition_mode: site.acquisition_mode,
+        publisher_id: publisher.id,
+        acquisition_mode: publisher.acquisition_mode,
         // Self-serve is the one case where the domain is released up front: the
         // agent does the publishing itself, so withholding it would make the
         // placement impossible. Everything else stays blind until delivery.
-        domain: selfServe ? site.domain : undefined,
-        link_attribute: site.link_attribute,
-        max_links_per_post: site.max_links_per_post ?? 'unknown',
-        agent_instructions: site.agent_instructions ?? undefined,
+        domain: selfServe ? publisher.domain : undefined,
+        link_attribute: publisher.link_attribute,
+        max_links_per_post: publisher.max_links_per_post ?? 'unknown',
+        agent_instructions: publisher.agent_instructions ?? undefined,
         next_step: selfServe
-          ? 'Publish there yourself following agent_instructions, then Cite verifies the link is live at T+7/T+30.'
-          : 'Cite submits the editorial application on your behalf. Acceptance is not guaranteed; you will be notified either way.',
+          ? 'Publish there yourself following agent_instructions, then placement.sh verifies the link is live at T+7/T+30.'
+          : 'placement.sh submits the editorial application on your behalf. Acceptance is not guaranteed; you will be notified either way.',
         free_placements_remaining: Math.max(0, account.quota - account.orders_used - 1),
       };
     }
+
+    case 'create_campaign':
+      return {
+        error: 'INSUFFICIENT_CREDIT',
+        message: 'Paid campaigns need prepaid credits (Stripe). Call estimate first — it needs no card. register_account to raise free-tier limits.',
+        target_url: args.target_url,
+        topics: args.topics,
+        budget: args.budget,
+      };
 
     default:
       return { error: 'UNKNOWN_TOOL', name };
@@ -444,8 +511,8 @@ async function handleMcp(req: Request, env: Env): Promise<Response> {
     return json({ jsonrpc: '2.0', id, result: {
       protocolVersion: (params?.protocolVersion as string) ?? '2025-03-26',
       capabilities: { tools: {} },
-      serverInfo: { name: 'cite', version: '0.2.0' },
-      instructions: 'Cite: agent-native link placement inventory (free read tier). Sites are anonymized handles; domains are revealed only when a placement is delivered.',
+      serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
+      instructions: 'placement.sh: buy publisher placements so a URL gets cited (ChatGPT, Perplexity, Google, AI Overviews). Call help or estimate first. Publishers are anonymized handles; domains are revealed only when a placement is delivered. This is bought inventory, not earned media.',
     } });
   }
   if (method?.startsWith('notifications/')) return new Response(null, { status: 202, headers: CORS });
@@ -583,11 +650,11 @@ async function computeAnalytics(env: Env): Promise<Row> {
     // inventory an agent actually wanted.
     const unmet = await many(`
       SELECT args, COUNT(*) AS times FROM query_log
-      WHERE tool = 'search_sites' AND result_count = 0
+      WHERE tool IN ('search_publishers','search_sites') AND result_count = 0
       GROUP BY args ORDER BY times DESC LIMIT 25
     `);
     const recentArgs = await many(`
-      SELECT args FROM query_log WHERE tool = 'search_sites' AND args IS NOT NULL
+      SELECT args FROM query_log WHERE tool IN ('search_publishers','search_sites') AND args IS NOT NULL
       ORDER BY id DESC LIMIT 500
     `);
     // Topic frequency has to be computed in JS — args is JSON.
@@ -683,7 +750,7 @@ async function handleAdminApi(req: Request, env: Env, path: string): Promise<Res
       return json({
         key,                       // shown once
         mcp_url: `${origin}/admin/mcp`,
-        connect_command: `claude mcp add --transport http cite-admin ${origin}/admin/mcp --header "Authorization: Bearer ${key}"`,
+        connect_command: `claude mcp add --transport http placement-admin ${origin}/admin/mcp --header "Authorization: Bearer ${key}"`,
         connector_url: `${origin}/admin/mcp/${key}`,
         note: 'Copy this now — it is not shown again. Revoke it any time from the console.',
       }, 201);
@@ -1238,8 +1305,8 @@ async function handleAdminMcp(req: Request, env: Env, tokenFromPath?: string): P
     return json({ jsonrpc: '2.0', id, result: {
       protocolVersion: (params?.protocolVersion as string) ?? '2025-03-26',
       capabilities: { tools: {} },
-      serverInfo: { name: 'cite-admin', version: '0.2.0' },
-      instructions: 'Cite operator console as tools. Full private data: domains, publisher contacts, seller prices, markup and margin. Bulk edits are dry-run by default — pass confirm:true to apply.',
+      serverInfo: { name: 'placement.sh-admin', version: SERVER_VERSION },
+      instructions: 'placement.sh operator console as tools. Full private data: domains, publisher contacts, seller prices, markup and margin. Bulk edits are dry-run by default — pass confirm:true to apply.',
     } });
   }
   if (method?.startsWith('notifications/')) return new Response(null, { status: 202, headers: CORS });
@@ -1258,9 +1325,18 @@ export default {
     const url = new URL(req.url);
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
     if (url.pathname === '/mcp') return handleMcp(req, env);
+    if (url.pathname === '/llms.txt' || url.pathname === '/llms-full.txt') {
+      return new Response(LLMS_TXT, { headers: { 'content-type': 'text/plain; charset=utf-8', ...CORS } });
+    }
+    if (url.pathname === '/.well-known/mcp/server.json') {
+      return json(serverJson(url.origin));
+    }
+    if (url.pathname === '/.well-known/mcp/server-card.json') {
+      return json(serverCard(url.origin));
+    }
     if (url.pathname === '/health') {
       const n = (await env.DB.prepare(`SELECT COUNT(*) AS n FROM sites`).first()) as { n: number };
-      return json({ ok: true, sites: n.n });
+      return json({ ok: true, product: SERVER_NAME, publishers: n.n });
     }
     if (url.pathname.startsWith('/auth/')) return handleAuth(req, env, url.pathname);
 
@@ -1302,11 +1378,7 @@ export default {
     if (url.pathname.startsWith('/admin/api/')) return handleAdminApi(req, env, url.pathname);
     if (url.pathname === '/') {
       return new Response(
-        `Cite v0 — agent-native link placement inventory (free read tier)\n\n` +
-        `MCP endpoint (Streamable HTTP): POST ${url.origin}/mcp\n` +
-        `Connect from Claude Code:  claude mcp add --transport http cite ${url.origin}/mcp\n\n` +
-        `Tools: search_sites, get_site, estimate, inventory_stats\n` +
-        `Handles are anonymized — domains are revealed only at delivery.\n`,
+        homepageText(url.origin),
         { headers: { 'content-type': 'text/plain; charset=utf-8', ...CORS } },
       );
     }

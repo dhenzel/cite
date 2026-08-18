@@ -1,6 +1,5 @@
-// Cite v0 MCP server — the free read tier from SPEC §6, plus a v0 estimate.
-// stdio transport: `npx tsx src/server.ts`, or via Claude Code:
-//   claude mcp add cite -- npx tsx /path/to/cite-mcp/src/server.ts
+// placement.sh local MCP (stdio). The hosted server is cite-worker.
+//   claude mcp add placement -- npx tsx /path/to/cite-mcp/src/server.ts
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
@@ -22,15 +21,15 @@ function ok(payload: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(payload, null, 2) }] };
 }
 
-const server = new McpServer({ name: 'cite', version: '0.1.0' });
+const server = new McpServer({ name: 'placement.sh', version: '0.1.0' });
 
 server.tool(
-  'search_sites',
-  'Search Cite placement inventory. Returns anonymized site handles — domains are revealed only when a placement is delivered. Filter by topic, Cite Score, price, and traffic.',
+  'search_publishers',
+  'Search paid placement.sh inventory. Returns anonymized publisher handles — domains are revealed only when a placement is delivered. Filter by topic, Placement Score, price, and traffic.',
   {
     topics: z.array(z.string()).optional().describe('Topic/niche terms, e.g. ["fintech","business"]'),
     text: z.string().optional().describe('Free-text match against what the site writes about'),
-    min_score: z.number().min(0).max(100).optional().describe('Minimum Cite Score (0-100)'),
+    min_score: z.number().min(0).max(100).optional().describe('Minimum Placement Score (0-100)'),
     max_price: z.number().positive().optional().describe('Maximum price per placement, USD'),
     min_traffic_band: z.enum(['500–1k/mo', '1k–5k/mo', '5k–10k/mo', '10k–50k/mo', '50k–250k/mo', '250k+/mo']).optional(),
     limit: z.number().int().min(1).max(MAX_RESULTS).optional(),
@@ -65,8 +64,8 @@ server.tool(
 
     const payload = {
       result_count: rows.length,
-      note: 'Handles are anonymized. Domains are revealed only at delivery; buy on cite_score, topics, traffic_band and price — backed by the live-and-indexed-at-T+30-or-refund guarantee.',
-      sites: rows.map((r) => publicSite(r)),
+      note: 'Handles are anonymized. Domains are revealed only at delivery; buy on placement_score, topics, traffic_band and price — backed by the live-and-indexed-at-T+30-or-refund guarantee.',
+      publishers: rows.map((r) => publicSite(r)),
     };
     assertNoLeak(payload, privateValues(rows));
     return ok(payload);
@@ -74,16 +73,16 @@ server.tool(
 );
 
 server.tool(
-  'get_site',
-  'Full anonymized profile for one site handle: score, pricing tiers, content summary, what it writes about, posting constraints.',
-  { site_id: z.string().describe('Handle from search_sites, e.g. cs_ab12cd34ef56') },
-  async ({ site_id }) => {
+  'get_publisher',
+  'Full anonymized profile for one publisher handle: Placement Score, pricing tiers, content summary, what it writes about, posting constraints.',
+  { publisher_id: z.string().describe('Handle from search_publishers, e.g. cs_ab12cd34ef56') },
+  async ({ publisher_id }) => {
     const row = db.prepare(`
       SELECT s.*, c.summary, c.writes_about, c.recent_titles
       FROM sites s LEFT JOIN site_content c ON c.site_id = s.id
       WHERE s.id = ? AND ${PAID_ONLY}
-    `).get(site_id) as SiteRow | undefined;
-    if (!row) return ok({ error: 'SITE_NOT_FOUND', site_id });
+    `).get(publisher_id) as SiteRow | undefined;
+    if (!row) return ok({ error: 'PUBLISHER_NOT_FOUND', publisher_id });
     const payload = publicSite(row, true);
     assertNoLeak(payload, privateValues([row]));
     return ok(payload);
@@ -92,7 +91,7 @@ server.tool(
 
 server.tool(
   'estimate',
-  'Sketch what a budget buys: placement counts across Cite Score bands for given topics. No commitment, no reserved inventory. A v0 taste of the allocator.',
+  'Sketch what a budget buys: placement counts across Placement Score bands for given topics. No commitment, no reserved inventory.',
   {
     topics: z.array(z.string()).describe('Campaign topics'),
     budget: z.number().positive().describe('Total budget, USD'),
@@ -138,7 +137,7 @@ server.tool(
           spent += p; count++;
         }
         remaining -= spent;
-        return { score_band: b.name, eligible_sites: b.sites.length, planned_placements: count, planned_spend: spent };
+        return { score_band: b.name, eligible_publishers: b.sites.length, planned_placements: count, planned_spend: spent };
       })
       .filter((p) => p.planned_placements > 0);
 
@@ -146,7 +145,7 @@ server.tool(
     const totalSpend = plan.reduce((a, p) => a + p.planned_spend, 0);
     return ok({
       topics, budget, risk_tolerance: risk,
-      constraints_applied: [`per-placement cap $${perPlacementCap}`, `min cite_score ${minScore}`, 'spend spread across score bands'],
+      constraints_applied: [`per-placement cap $${perPlacementCap}`, `min placement_score ${minScore}`, 'spend spread across score bands'],
       plan,
       total_planned_placements: totalPlacements,
       total_planned_spend: totalSpend,
@@ -158,7 +157,7 @@ server.tool(
 
 server.tool(
   'inventory_stats',
-  'Aggregate view of Cite inventory: counts by niche and Cite Score band. No site identities.',
+  'Aggregate view of paid placement.sh inventory: counts by niche and Placement Score band. No publisher identities.',
   {},
   async () => {
     const byNiche = db.prepare(`
@@ -175,10 +174,10 @@ server.tool(
       GROUP BY band ORDER BY MIN(cite_score) DESC
     `).all();
     const total = db.prepare(`SELECT COUNT(*) AS n FROM sites WHERE status='active' AND listed_price IS NOT NULL AND listed_price > 0 AND COALESCE(cost_type,'paid')='paid' AND COALESCE(acquisition_mode,'paid_placement')='paid_placement'`).get();
-    return ok({ purchasable_sites: (total as { n: number }).n, by_niche: byNiche, by_score_band: byBand });
+    return ok({ purchasable_publishers: (total as { n: number }).n, by_niche: byNiche, by_score_band: byBand });
   },
 );
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
-console.error('cite-mcp v0 ready (stdio)');
+console.error('placement.sh mcp ready (stdio)');

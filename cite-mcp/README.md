@@ -1,7 +1,7 @@
-# cite-mcp — Cite v0 prototype
+# placement.sh — local MCP prototype
 
-Local stdio MCP over the Shortlist inventory. The hosted buyer surface
-(`cite-worker`) is paid placements only — this prototype matches that filter.
+Local stdio MCP over the Shortlist inventory. Matches the hosted buyer surface
+(`cite-worker`): paid placements only, publisher handles, Placement Score.
 
 ## Setup
 
@@ -9,7 +9,7 @@ Local stdio MCP over the Shortlist inventory. The hosted buyer surface
 cd cite-mcp
 npm install
 # put the publisher sheet CSV export at data/inventory.csv (never commit it)
-npm run import          # builds data/cite.db — 9,453 sites, Cite Scores, listed prices
+npm run import          # builds data/cite.db — 9,453 publishers, Placement Scores, listed prices
 npm run enrich -- --limit 100   # optional: crawl sites → anonymized content summaries
 ```
 
@@ -18,18 +18,18 @@ npm run enrich -- --limit 100   # optional: crawl sites → anonymized content s
 ## Connect from Claude Code
 
 ```bash
-claude mcp add cite -- npx tsx /absolute/path/to/cite-mcp/src/server.ts
+claude mcp add placement -- npx tsx /absolute/path/to/cite-mcp/src/server.ts
 ```
 
 Then ask Claude things like:
 
-> "Search Cite for finance sites with score ≥ 60 under $300, tell me which
+> "Search placement.sh for finance publishers with score ≥ 60 under $300, tell me which
 > ones fit a B2B payments product, and what kind of post each would take."
 
 ## Tools
 
-- `search_sites` — filter by topics / text / min_score / max_price / traffic band. Returns anonymized handles only.
-- `get_site` — full anonymized profile incl. content summary + what the site writes about (when enriched).
+- `search_publishers` — filter by topics / text / min_score / max_price / traffic band. Returns anonymized handles only.
+- `get_publisher` — full anonymized profile incl. content summary + what the publisher writes about (when enriched).
 - `estimate` — what a budget buys across score bands (v0 allocator taste, applies the ≤25%-of-budget per-placement cap).
 - `inventory_stats` — aggregate niche/score-band counts.
 

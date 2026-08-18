@@ -99,12 +99,23 @@ r = await worker.fetch(new Request('https://placement.sh/', { headers: { accept:
 const home = await r.text();
 assert(r.status === 200 && (r.headers.get('content-type') ?? '').includes('text/html'), 'browser homepage is HTML');
 assert(home.includes('Buy publisher placements') && home.includes('Claude') && home.includes('ChatGPT') && home.includes('Grok') && home.includes('Kimi') && home.includes('Cursor'), 'homepage names the product and agent buttons');
-assert(home.includes('https://placement.sh/mcp') && !home.includes('Shortlist'), 'homepage shows MCP URL and stays quiet on ownership');
+assert(home.includes('https://placement.sh/mcp') && !home.includes('Shortlist') && !home.includes('workers.dev'), 'homepage shows MCP URL and stays quiet on ownership');
 assert(!/claim a free/i.test(home) && /no free listings/i.test(home), 'homepage says there are no free listings');
 assert(!home.includes('window.open') && !home.includes('cursor://') && !/https:\/\/(claude\.ai|chatgpt\.com|grok\.com)\//.test(home), 'agent buttons stay on-page and do not deep-link out');
 assert(home.includes('data-client="cursor"') && !home.includes('<a class="btn"'), 'Cursor is a button like the others, not an outbound link');
 r = await worker.fetch(new Request('https://www.placement.sh/llms.txt'), env);
 assert(r.status === 301 && r.headers.get('location') === 'https://placement.sh/llms.txt', 'www redirects to apex');
+r = await worker.fetch(new Request('https://cite-mcp.d-henzel.workers.dev/'), env);
+assert(r.status === 301 && r.headers.get('location') === 'https://placement.sh/', 'workers.dev homepage redirects to placement.sh');
+r = await worker.fetch(new Request('https://cite-mcp.d-henzel.workers.dev/admin'), env);
+assert(r.status === 301 && r.headers.get('location') === 'https://placement.sh/admin', 'workers.dev console redirects to placement.sh');
+r = await worker.fetch(new Request('https://cite-mcp.d-henzel.workers.dev/mcp', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+}), env);
+assert(r.status === 200, 'POST /mcp still works on workers.dev so old clients do not die mid-request');
+assert(!JSON.stringify(await r.json()).includes('workers.dev'), 'MCP payload does not advertise workers.dev');
 r = await worker.fetch(new Request('https://mcp.placement.sh/mcp', {
   method: 'POST',
   headers: { 'content-type': 'application/json' },
@@ -528,6 +539,18 @@ assert(minted.connect_command.includes('claude mcp add') && minted.connect_comma
   'mint response includes a copy-paste connect command');
 assert(minted.connector_url.endsWith(minted.key), 'mint response includes a header-free connector URL');
 
+r = await worker.fetch(new Request('https://cite-mcp.d-henzel.workers.dev/admin/api/keys', {
+  method: 'POST',
+  headers: { cookie: ssoCookie, 'content-type': 'application/json' },
+  body: JSON.stringify({ label: 'from-workers-dev' }),
+}), ssoEnv);
+const mintedOnLegacyHost = await r.json();
+assert(r.status === 201, 'can mint a key even if the POST hit workers.dev');
+assert(String(mintedOnLegacyHost.connector_url).startsWith('https://placement.sh/admin/mcp/'),
+  'admin MCP connector URL is placement.sh, never workers.dev');
+assert(!JSON.stringify(mintedOnLegacyHost).includes('workers.dev'),
+  'minted key payload never mentions workers.dev');
+
 // the personal key authenticates the admin MCP, by header and by path
 r = await fs2('/admin/mcp', { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${minted.key}` },
   body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) });
@@ -539,7 +562,7 @@ assert(r.status === 200, 'personal key works in the URL path (for header-less co
 // listing masks the key and records usage
 r = await fs2('/admin/api/keys', { headers: { cookie: ssoCookie } });
 const listed = await r.json();
-assert(listed.keys.length === 1 && !JSON.stringify(listed).includes(minted.key), 'key list never returns the full key');
+assert(listed.keys.length === 2 && !JSON.stringify(listed).includes(minted.key), 'key list never returns the full key');
 assert(listed.keys[0].masked.startsWith('cka_') && listed.keys[0].last_used_at, 'list shows a masked key and last-used time');
 
 // revoke by the displayed prefix

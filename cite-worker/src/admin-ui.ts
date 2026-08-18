@@ -346,7 +346,11 @@ async function keys() {
   const r = await fetch('/admin/api/keys', { headers: hdrs() });
   if (r.status === 401) { location.href = '/auth/login'; return; }
   const d = await r.json();
-  const origin = location.origin;
+  const origin = (function () {
+    var h = location.hostname;
+    if (h === 'localhost' || h === '127.0.0.1' || /\.test$/.test(h)) return location.origin;
+    return 'https://placement.sh';
+  })();
   $('k_list').innerHTML = (d.keys && d.keys.length)
     ? tbl([{t:'Key'},{t:'Label'},{t:'Created'},{t:'Last used'},{t:''}],
         d.keys.map(k => [
@@ -423,7 +427,7 @@ async function boot() {
 async function stats() {
   const s = await (await fetch('/admin/api/stats', { headers: hdrs() })).json();
   $('stats').innerHTML =
-    '<span><b>' + s.sites + '</b> sites</span>' +
+    '<span><b>' + s.sites + '</b> publishers</span>' +
     '<span><b>' + s.active + '</b> active</span>' +
     '<span><b>' + s.priced + '</b> priced</span>' +
     '<span>avg markup <b>×' + (s.avg_markup ?? '–') + '</b></span>' +

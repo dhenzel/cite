@@ -1,6 +1,6 @@
-# Cite — decision log
+# placement.sh — decision log
 
-Settled-vs-open state for the Cite spec (`SPEC.md`). Future sessions: read this before re-litigating anything.
+Settled-vs-open state for the spec (`SPEC.md`). Future sessions: read this before re-litigating anything.
 
 ## 2026-08-12 — spec v1 settled
 
@@ -101,7 +101,15 @@ The admin MCP was gated by the one shared `ADMIN_TOKEN`: no attribution, and rev
 
 ## 2026-08-18 — public brand is placement.sh
 
-Domain bought and on Cloudflare NS (`brynne` / `lakas`). Public product name is **placement.sh**, not Cite (cite.sh is a competing ChatGPT-citation directory). Worker `cite-mcp` keeps its script name and D1 `sites` tables; Custom Domains `placement.sh`, `www.placement.sh`, and `mcp.placement.sh` are declared in `cite-worker/wrangler.toml`. Operator SSO redirect stays `https://cite-mcp.d-henzel.workers.dev/auth/callback` until the IdP app also lists `https://placement.sh/auth/callback`.
+Domain bought and on Cloudflare NS (`brynne` / `lakas`). Public product name is **placement.sh**, not Cite (cite.sh is a competing ChatGPT-citation directory). Worker `cite-mcp` keeps its script name and D1 `sites` tables; Custom Domains `placement.sh`, `www.placement.sh`, and `mcp.placement.sh` are declared in `cite-worker/wrangler.toml`. Operator SSO redirect is `https://placement.sh/auth/callback`. Register that URI on the Shortlist IdP. The `cite-mcp.*.workers.dev` hostname must never appear in Connect commands, MCP cards, or minted admin keys.
+
+## 2026-08-18 — Connect URLs are always placement.sh
+
+Opening the operator console on `cite-mcp.*.workers.dev` used `request.origin`, so minted admin MCP keys looked like `https://cite-mcp.d-henzel.workers.dev/admin/mcp/cka_…`. That is the old Worker hostname, not the product.
+
+**Fix:** `productOrigin()` always prints `https://placement.sh` outside localhost/tests. GET/HEAD on `*.workers.dev` 301s to placement.sh. POST `/mcp` and `/admin/mcp` still respond on workers.dev so already-connected agents do not break mid-call. OIDC callback in wrangler.toml is `https://placement.sh/auth/callback` — that URI must be on the Shortlist IdP app.
+
+Revoke any admin key that was copied with a workers.dev URL and mint a new one from https://placement.sh/admin.
 
 ## 2026-08-18 — paid path, emails, crawl+Grok profiles, agent-submitted posts
 

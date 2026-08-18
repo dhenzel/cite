@@ -35,7 +35,7 @@ enabled = true
 [vars]
 OIDC_ISSUER = "https://shortlist.on-relote.com"
 OIDC_CLIENT_ID = "8c5c0c33607c048dd2595658c48a94d3"
-OIDC_REDIRECT_URI = "https://cite-mcp.d-henzel.workers.dev/auth/callback"
+OIDC_REDIRECT_URI = "https://placement.sh/auth/callback"
 ENGINE_MCP_URL = "https://shortlist.on-relote.com/mcp"
 # Who may open the console: this ability, OR an email in CITE_ADMIN_EMAILS.
 CITE_ADMIN_ABILITY = "*:read"

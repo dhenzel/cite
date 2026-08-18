@@ -12,7 +12,8 @@ import { publicSite, assertNoLeak, type SiteRow } from './serialize.js';
 const here = dirname(fileURLToPath(import.meta.url));
 const db = new Database(join(here, '..', 'data', 'cite.db'), { readonly: true });
 
-const MAX_RESULTS = 50; // free-tier cap (SPEC §11)
+const MAX_RESULTS = 50; // registered-account cap (SPEC §11)
+const PAID_ONLY = "s.status = 'active' AND s.listed_price IS NOT NULL AND s.listed_price > 0 AND COALESCE(s.cost_type,'paid') = 'paid' AND COALESCE(s.acquisition_mode,'paid_placement') = 'paid_placement'";
 
 const privateValues = (rows: SiteRow[]): string[] =>
   rows.flatMap((r) => [r.domain, r.contact_email, r.contact_name, r.point_of_contact] as string[]).filter(Boolean);
@@ -35,7 +36,7 @@ server.tool(
     limit: z.number().int().min(1).max(MAX_RESULTS).optional(),
   },
   async (args) => {
-    const clauses: string[] = ["s.status = 'active'", 's.listed_price IS NOT NULL'];
+    const clauses: string[] = [PAID_ONLY];
     const params: unknown[] = [];
     if (args.topics?.length) {
       const t = args.topics.map(() => '(s.niche LIKE ? OR s.subniche LIKE ? OR c.writes_about LIKE ?)').join(' OR ');
@@ -80,7 +81,7 @@ server.tool(
     const row = db.prepare(`
       SELECT s.*, c.summary, c.writes_about, c.recent_titles
       FROM sites s LEFT JOIN site_content c ON c.site_id = s.id
-      WHERE s.id = ?
+      WHERE s.id = ? AND ${PAID_ONLY}
     `).get(site_id) as SiteRow | undefined;
     if (!row) return ok({ error: 'SITE_NOT_FOUND', site_id });
     const payload = publicSite(row, true);
@@ -107,7 +108,7 @@ server.tool(
     const rows = db.prepare(`
       SELECT s.cite_score, s.listed_price
       FROM sites s LEFT JOIN site_content c ON c.site_id = s.id
-      WHERE s.status='active' AND s.listed_price IS NOT NULL AND s.listed_price <= ?
+      WHERE ${PAID_ONLY} AND s.listed_price <= ?
         AND s.cite_score >= ? AND (${t})
       ORDER BY s.cite_score DESC
     `).all(perPlacementCap, minScore, ...params) as { cite_score: number; listed_price: number }[];
@@ -163,17 +164,17 @@ server.tool(
     const byNiche = db.prepare(`
       SELECT niche, COUNT(*) AS sites, ROUND(AVG(cite_score)) AS avg_score,
              MIN(listed_price) AS from_price
-      FROM sites WHERE status='active' AND listed_price IS NOT NULL AND niche IS NOT NULL
+      FROM sites WHERE status='active' AND listed_price IS NOT NULL AND listed_price > 0 AND COALESCE(cost_type,'paid')='paid' AND COALESCE(acquisition_mode,'paid_placement')='paid_placement' AND niche IS NOT NULL
       GROUP BY niche ORDER BY sites DESC LIMIT 15
     `).all();
     const byBand = db.prepare(`
       SELECT CASE WHEN cite_score>=80 THEN '80–100' WHEN cite_score>=60 THEN '60–79'
                   WHEN cite_score>=40 THEN '40–59' ELSE '<40' END AS band,
              COUNT(*) AS sites
-      FROM sites WHERE status='active' AND listed_price IS NOT NULL
+      FROM sites WHERE status='active' AND listed_price IS NOT NULL AND listed_price > 0 AND COALESCE(cost_type,'paid')='paid' AND COALESCE(acquisition_mode,'paid_placement')='paid_placement'
       GROUP BY band ORDER BY MIN(cite_score) DESC
     `).all();
-    const total = db.prepare(`SELECT COUNT(*) AS n FROM sites WHERE status='active' AND listed_price IS NOT NULL`).get();
+    const total = db.prepare(`SELECT COUNT(*) AS n FROM sites WHERE status='active' AND listed_price IS NOT NULL AND listed_price > 0 AND COALESCE(cost_type,'paid')='paid' AND COALESCE(acquisition_mode,'paid_placement')='paid_placement'`).get();
     return ok({ purchasable_sites: (total as { n: number }).n, by_niche: byNiche, by_score_band: byBand });
   },
 );

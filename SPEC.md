@@ -60,8 +60,8 @@ Owner contact information is held on `Site` and is **never exposed through any A
 | `accepted_floor_price` | money | lowest price this publisher has actually accepted — internal |
 | `acquisition_mode` | enum | `paid_placement` \| `self_serve` \| `apply_editorial` \| `link_exchange` \| `unavailable` — how a placement is actually obtained (§17) |
 | `cost_type` | enum | `paid` \| `free` |
-| `requires_reciprocal_link` | bool | link-exchange deals cost a link from the buyer's own site; excluded from search by default |
-| `agent_instructions` | string | for free self-serve sites: what the agent must do to publish there |
+| `requires_reciprocal_link` | bool | link-exchange deals cost a link from the buyer's own site; hidden from buyer MCP |
+| `agent_instructions` | string | operator-only leftover from free self-serve; never serialized on the public MCP |
 | `status` | enum | `active` \| `paused` \| `burned` |
 | `throttle_counters` | object | `{placements_this_quarter, last_placement_at, quarter_key}` |
 
@@ -335,41 +335,43 @@ Build the shortest path that takes real money and delivers one real link.
 
 ---
 
-## 17. Free inventory and access tiers
+## 17. Buyer inventory is paid-only; access tiers
 
-*Added 2026-08-17.*
+*Added 2026-08-17. **Superseded 2026-08-18:** free listings are no longer sold or claimed on the public MCP.*
 
-### Free inventory
+### Paid inventory (buyer MCP)
 
-Not all supply costs money, and the free kind is strategically different: **it is the only inventory an agent can execute end to end without a human operator**, so it is not capped by the §8 outreach ceiling. `acquisition_mode` records how a placement is actually obtained:
+The public tools (`estimate`, `search_publishers`, `get_publisher`, `inventory_stats`) return **paid placements only**: `cost_type=paid`, `listed_price > 0`, `acquisition_mode=paid_placement`. `$0` / self-serve / editorial-free / link-exchange rows may remain in D1 so operators can still see them in the console; they must not appear to a buyer agent.
 
-| mode | what it means | who executes |
+`claim_free_placement` is removed. An agent that still calls it gets `TOOL_REMOVED` and a `next_step` pointing at register → credits → `create_campaign`.
+
+**Why:** a $0 newsletter subdomain with a high DR looks like a "huge free citation." Agents then offer it as a consolation prize when Stripe isn't live. That is not the product. The product is bought placements, live and indexed at T+30 or refunded.
+
+`acquisition_mode` remains on the operator model:
+
+| mode | what it means | buyer MCP |
 |---|---|---|
-| `paid_placement` | Cite pays the publisher | Cite operator (§8) |
-| `self_serve` | anyone can register and publish — Medium, dev.to, Hashnode, Substack… | the buyer's agent, after Cite releases the domain |
-| `apply_editorial` | free, but an editorial pitch that may be rejected | Cite operator |
-| `link_exchange` | free in cash, costs a reciprocal link from the buyer's site | excluded from search by default; parked |
-| `unavailable` | not accepting placements | nobody |
-
-**Free placements are free** — no service fee. They are the trial and the demand instrument.
-
-**Honest caveat carried in the data:** most self-serve platforms give `nofollow`/UGC links, so Google link equity is minimal. Their value is AI-citation surface — answer engines cite these domains heavily, which is the §1 "why now". `link_attribute` and `agent_instructions` state this per site rather than letting a buyer assume.
-
-**Self-serve is the one case where the domain is released before delivery** (§11): the agent does the publishing, so withholding the domain would make the placement impossible. Everything else stays blind.
+| `paid_placement` | Cite pays the publisher | shown |
+| `self_serve` | anyone can register and publish — Medium, Substack… | hidden |
+| `apply_editorial` | free editorial pitch | hidden |
+| `link_exchange` | reciprocal link from the buyer's site | hidden |
+| `unavailable` | not accepting placements | hidden |
 
 ### Access tiers
+
+Looking is still free (no card). Buying is not.
 
 | tier | how you get it | result cap | what you can do |
 |---|---|---|---|
 | anonymous | nothing | 10 per search | search, inspect, estimate |
-| account | `register_account({email})` — agent-driven, instant, no card | 50 per search | + claim up to 10 free placements |
-| funded | add a card (Stripe) | 50 | + paid placements (not enabled yet) |
+| registered | `register_account({email})` — agent asks the human; do not invent an email | 50 per search | same, plus a key for later calls |
+| funded | prepaid Stripe credits | 50 | + `create_campaign` / submit |
 
-The ladder is deliberately frictionless at the point an agent hits a limit: the agent creates the account itself, and Cite captures an email. Every call is written to `query_log` — query volume, top topics, and **zero-result searches** (inventory an agent wanted and we could not supply) are the signal that decides whether the paid path gets built (§15).
+The ladder is still frictionless at the point an agent wants to buy: the agent asks the human for an email, creates the account, then follows `next_step` on `INSUFFICIENT_CREDIT`. Every call is written to `query_log`.
 
 ### Operator MCP
 
-The console (§16) is also exposed as an MCP server at `/admin/mcp`, guarded by the same `ADMIN_TOKEN`, so the team can run the back office from an agent: `admin_search_sites`, `admin_update_site`, `admin_bulk_update` (dry-run by default), `admin_update_metrics` (push a refresh, recompute Cite Score), `admin_add_site`, `admin_analytics`. Never listed on public MCP directories.
+The console (§16) is also exposed as an MCP server at `/admin/mcp`, guarded by the same `ADMIN_TOKEN`, so the team can run the back office from an agent: `admin_search_sites`, `admin_update_site`, `admin_bulk_update` (dry-run by default), `admin_update_metrics` (push a refresh, recompute Cite Score), `admin_add_site`, `admin_analytics`. Never listed on public MCP directories. Operators can still filter `cost_type=free` in the console; buyers cannot.
 
 ---
 

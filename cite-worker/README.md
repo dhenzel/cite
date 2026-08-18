@@ -3,7 +3,7 @@
 Cloudflare Worker serving:
 
 - **`GET /`** — minimal landing page (HTML for browsers, plaintext for agents).
-- **`POST /mcp`** — public free read tier (MCP Streamable HTTP): `help`, `estimate`, `search_publishers`, `get_publisher`, `inventory_stats`. Whitelisted fields only — domains, contacts, seller prices, and markup are never serialized here (blind placements).
+- **`POST /mcp`** — public MCP (Streamable HTTP): `help`, `estimate`, `search_publishers`, `get_publisher`, `inventory_stats`, `register_account`, `account_status`, `create_campaign`. Paid inventory only. Whitelisted fields — domains, contacts, seller prices, and markup are never serialized here (blind placements).
 - **`GET /llms.txt`**, **`GET /.well-known/mcp/server.json`** — agent discovery.
 - **`/admin`** — operator console: full inventory with seller price, markup, listed price and margin. Guarded by Shortlist SSO / `ADMIN_TOKEN`.
 

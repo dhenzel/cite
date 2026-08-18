@@ -13,7 +13,7 @@ This is the shortest path that takes real money, lets a customer’s agent write
 | Piece | State today |
 |---|---|
 | Inventory in D1 (`cite-v0`) | ~9k publishers, prices, contacts |
-| Public MCP | `estimate` / `search_publishers` / `get_publisher` / `register_account` / `claim_free_placement` |
+| Public MCP | `estimate` / `search_publishers` / `get_publisher` / `register_account` / `create_campaign`. **Paid inventory only** — no `claim_free_placement`, no $0 / self-serve listings |
 | `create_campaign` | stub — always returns `INSUFFICIENT_CREDIT` |
 | Stripe | column `accounts.stripe_customer_id` exists; no Checkout, no webhooks, no balance |
 | `site_content` | table exists; ~11 demo rows; `cite-mcp/src/enrich.ts` fetches homepage + RSS and stores a **brand-scrubbed** summary. Most inventory is still just a niche tag (“Tech”) |
@@ -101,7 +101,7 @@ Two completely different streams. Mixing them burns concealment (§12a / §14).
 
 | event | when | says | never says |
 |---|---|---|---|
-| `account.created` | `register_account` | you have an account; how to add the MCP; free vs paid | Shortlist, publisher names |
+| `account.created` | `register_account` | you have an account; how to add the MCP; next step is prepaid credits | Shortlist, publisher names, free listings |
 | `credits.added` | Checkout completed | amount, new available balance | last4 unnecessary |
 | `order.received` | `submit_placement` accepted | order id, listed price, “we’ll email when it’s live” | domain |
 | `order.needs_revision` | auto_screen failed **and** the agent is gone (no follow-up call in 30 min) | the structured error in English | domain |

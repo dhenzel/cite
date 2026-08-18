@@ -171,7 +171,7 @@ export const homepageHtml = (origin: string): string => {
   <ol>
     <li><strong>Add this MCP</strong> to Claude, ChatGPT, Grok, Kimi, Cursor, or any agent that speaks MCP.</li>
     <li><strong>Ask the agent to estimate</strong> — URL, topics, budget. No card required to look.</li>
-    <li><strong>Claim a free listing</strong> to try it, or fund a campaign when you are ready. Paid placements are live and indexed at T+30, or refunded.</li>
+    <li><strong>To buy</strong>, the agent asks for a contact email, then prepaid credits. Paid placements are live and indexed at T+30, or refunded. There are no free listings.</li>
   </ol>
 
   <h2>Add to your agent</h2>
@@ -201,7 +201,7 @@ export const homepageHtml = (origin: string): string => {
 <script>
 (function () {
   var MCP = ${JSON.stringify(mcp)};
-  var ASK = "Then tell it: Get https://example.com cited on [topics], budget $X. It should call estimate first.";
+  var ASK = "Then tell it: Get https://example.com cited on [topics], budget $X. It should call estimate first, then ask for your email to register. There are no free listings.";
   var guides = {
     claude: {
       title: "In Claude",

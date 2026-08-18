@@ -13,7 +13,7 @@ grok mcp add placement --url https://mcp.placement.sh/mcp
 
 Until the custom domain is attached, use the Worker URL the same way (`…/mcp`).
 
-Call **`estimate`** first. Then `search_publishers` / `get_publisher` to inspect. Publisher domains stay blind until delivery.
+Call **`estimate`** first. Then `search_publishers` / `get_publisher` to inspect. Looking needs no card. Booking needs the human’s email and prepaid credits. There are no free listings. Publisher domains stay blind until delivery.
 
 - Agents: [`/llms.txt`](https://placement.sh/llms.txt)
 - Registry card: [`/.well-known/mcp/server.json`](https://placement.sh/.well-known/mcp/server.json)

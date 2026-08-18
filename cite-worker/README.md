@@ -14,7 +14,18 @@ Public language is **publisher / placement**, never site. D1 table names stay `s
 claude mcp add --transport http placement https://mcp.placement.sh/mcp
 ```
 
-Until DNS is attached to this Worker, substitute the `*.workers.dev` origin.
+## Custom domains
+
+`wrangler.toml` attaches this Worker as origin for `placement.sh`, `www.placement.sh`, and `mcp.placement.sh`. Deploy from this directory with the same Cloudflare account that owns the zone:
+
+```bash
+cd cite-worker
+npx wrangler deploy --keep-vars
+```
+
+`--keep-vars` preserves `ADMIN_TOKEN`, OIDC secrets, and `SESSION_SECRET`. If deploy errors on an existing CNAME, delete that DNS record in the placement.sh zone and redeploy. Apex A/AAAA placeholders are usually replaced.
+
+Until that deploy runs, the live origin is still `https://cite-mcp.d-henzel.workers.dev`.
 
 ## First-time setup
 
@@ -23,10 +34,8 @@ cd cite-worker
 npm install
 npx wrangler d1 execute cite-v0 --remote --file=/path/to/seed.sql
 npx wrangler secret put ADMIN_TOKEN
-npx wrangler deploy
+npx wrangler deploy --keep-vars
 ```
-
-Then attach `mcp.placement.sh` (and apex `placement.sh`) to the Worker.
 
 ## Tests
 

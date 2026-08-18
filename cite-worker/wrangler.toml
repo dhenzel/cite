@@ -1,6 +1,22 @@
 name = "cite-mcp"
 main = "src/index.ts"
 compatibility_date = "2026-08-01"
+workers_dev = true
+
+# Custom Domains on the placement.sh zone (Cloudflare NS already).
+# `wrangler deploy` creates DNS + certs. Fails if a hostname already has a
+# CNAME — delete that record first (apex A/AAAA placeholders are usually replaced).
+[[routes]]
+pattern = "placement.sh"
+custom_domain = true
+
+[[routes]]
+pattern = "www.placement.sh"
+custom_domain = true
+
+[[routes]]
+pattern = "mcp.placement.sh"
+custom_domain = true
 
 # Working store: full private dataset lives in D1 (cite-v0, main account).
 # Public MCP tools serve whitelisted fields only; /admin/api/* (bearer

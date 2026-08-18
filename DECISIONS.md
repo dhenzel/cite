@@ -99,9 +99,13 @@ Because the SSO change had removed `ADMIN_TOKEN` as a way into `/admin`, that le
 
 The admin MCP was gated by the one shared `ADMIN_TOKEN`: no attribution, and revoking it cut off the whole team. The console now has a **Connect** tab where a signed-in person mints their own `cka_…` key, with the `claude mcp add` command pre-filled and a header-free `/admin/mcp/<key>` URL for claude.ai connectors (which cannot send headers). Keys are shown once, listed masked with a last-used timestamp, revocable by the owner, and validated on every call against the owner's current engine abilities — so losing engine access disables the key without anyone remembering to. A break-glass token session cannot mint one (`SSO_REQUIRED`). The shared token still works, so it can be retired on David's schedule rather than in a flag day.
 
+## 2026-08-18 — public brand is placement.sh
+
+Domain bought and on Cloudflare NS (`brynne` / `lakas`). Public product name is **placement.sh**, not Cite (cite.sh is a competing ChatGPT-citation directory). Worker `cite-mcp` keeps its script name and D1 `sites` tables; Custom Domains `placement.sh`, `www.placement.sh`, and `mcp.placement.sh` are declared in `cite-worker/wrangler.toml`. Operator SSO redirect stays `https://cite-mcp.d-henzel.workers.dev/auth/callback` until the IdP app also lists `https://placement.sh/auth/callback`.
+
 ## Still open
 
-1. **Domain + trademark check for "Cite"** (§13.1) — cheap, blocks all public naming; do now.
+1. **Domain + trademark check for "Cite"** (§13.1) — **closed as a brand**: ship as placement.sh. Cite remains the repo/worker name.
 2. **Finished posts vs. pitches** (§13.5) — currently finished posts, flagged revisitable.
 3. **Ahrefs / Moz / Majestic API access** — verify what Shortlist's licences actually include (API vs. UI-only).
 4. **Link-attribute backfill** — dofollow/sponsored unknown across 9,453 sites; mandatory field before launch (§12b).

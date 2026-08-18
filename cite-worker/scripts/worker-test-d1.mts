@@ -91,6 +91,14 @@ r = await f('/.well-known/mcp/server.json');
 assert((await r.json()).name === 'sh.placement/mcp', 'MCP registry server.json');
 r = await f('/');
 assert((await r.text()).includes('claude mcp add --transport http placement'), 'homepage install command');
+r = await worker.fetch(new Request('https://www.placement.sh/llms.txt'), env);
+assert(r.status === 301 && r.headers.get('location') === 'https://placement.sh/llms.txt', 'www redirects to apex');
+r = await worker.fetch(new Request('https://mcp.placement.sh/mcp', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+}), env);
+assert(r.status === 200, 'mcp.placement.sh serves POST /mcp');
 
 console.log('\nall checks passed');
 

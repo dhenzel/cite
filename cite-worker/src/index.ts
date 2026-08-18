@@ -1324,6 +1324,11 @@ export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
+    // www is a Custom Domain so TLS works; send browsers to the apex.
+    if (url.hostname.toLowerCase() === 'www.placement.sh' && (req.method === 'GET' || req.method === 'HEAD')) {
+      url.hostname = 'placement.sh';
+      return new Response(null, { status: 301, headers: { location: url.toString(), ...CORS } });
+    }
     if (url.pathname === '/mcp') return handleMcp(req, env);
     if (url.pathname === '/llms.txt' || url.pathname === '/llms-full.txt') {
       return new Response(LLMS_TXT, { headers: { 'content-type': 'text/plain; charset=utf-8', ...CORS } });

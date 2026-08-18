@@ -86,7 +86,11 @@ assert(r.status === 200 && (await r.text()).includes('operator console'), 'admin
 r = await f('/.well-known/oauth-protected-resource');
 assert(r.status === 404, 'oauth discovery probes still 404');
 r = await f('/llms.txt');
-assert(r.status === 200 && (await r.text()).includes('placement.sh'), 'llms.txt served for agents');
+{
+  const llms = await r.text();
+  assert(r.status === 200 && llms.includes('placement.sh'), 'llms.txt served for agents');
+  assert(!/shortlist/i.test(llms), 'agent docs stay quiet on Shortlist');
+}
 r = await f('/.well-known/mcp/server.json');
 {
   const card = await r.json();
@@ -99,7 +103,9 @@ r = await worker.fetch(new Request('https://placement.sh/', { headers: { accept:
 const home = await r.text();
 assert(r.status === 200 && (r.headers.get('content-type') ?? '').includes('text/html'), 'browser homepage is HTML');
 assert(home.includes('Buy publisher placements') && home.includes('Claude') && home.includes('ChatGPT') && home.includes('Grok') && home.includes('Kimi') && home.includes('Cursor'), 'homepage names the product and agent buttons');
-assert(home.includes('https://placement.sh/mcp') && !home.includes('Shortlist') && !home.includes('workers.dev'), 'homepage shows MCP URL and stays quiet on ownership');
+assert(home.includes('https://placement.sh/mcp') && !home.includes('workers.dev'), 'homepage shows MCP URL, not workers.dev');
+assert(home.includes('https://shortlist.io/') && home.includes('https://shortlist.io/about-us/'), 'homepage links Shortlist and the team page');
+assert(/A <a href="https:\/\/shortlist\.io\/">Shortlist<\/a> product/.test(home) && /since 2018/.test(home), 'homepage names Shortlist as the operator, quietly');
 assert(!/claim a free/i.test(home) && /no free listings/i.test(home), 'homepage says there are no free listings');
 assert(!home.includes('window.open') && !home.includes('cursor://') && !/https:\/\/(claude\.ai|chatgpt\.com|grok\.com)\//.test(home), 'agent buttons stay on-page and do not deep-link out');
 assert(home.includes('data-client="cursor"') && !home.includes('<a class="btn"'), 'Cursor is a button like the others, not an outbound link');

@@ -155,10 +155,15 @@ export const homepageHtml = (origin: string): string => {
   .panel .muted { color: var(--muted); }
   footer {
     margin-top: 2.6rem;
+    padding-top: 1.4rem;
+    border-top: 1px solid var(--line);
     color: var(--muted);
     font-size: 0.88rem;
   }
   footer a { color: inherit; }
+  footer .trust { margin: 0 0 0.85rem; line-height: 1.45; }
+  footer .trust a { color: var(--ink); text-decoration: underline; text-underline-offset: 0.15em; }
+  footer .meta { font-size: 0.82rem; }
 </style>
 </head>
 <body>
@@ -193,9 +198,11 @@ export const homepageHtml = (origin: string): string => {
   </div>
 
   <footer>
-    Streamable HTTP MCP · POST ${mcpEsc}<br>
+    <p class="trust">A <a href="https://shortlist.io/">Shortlist</a> product — publisher placements since 2018.
+      <a href="https://shortlist.io/about-us/">Meet the team</a>.</p>
+    <p class="meta">Streamable HTTP MCP · POST ${mcpEsc}<br>
     Agents: <a href="/llms.txt">/llms.txt</a>
-    · <a href="/.well-known/mcp/server.json">server card</a>
+    · <a href="/.well-known/mcp/server.json">server card</a></p>
   </footer>
 </main>
 <script>

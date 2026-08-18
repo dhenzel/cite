@@ -95,13 +95,13 @@ Happy path, one conversation:
 
 Two completely different streams. Mixing them burns concealment (§12a / §14).
 
-### A. Buyer transactional — from placement.sh
+### A. Buyer transactional — from shortlist.io
 
-**From:** `hello@placement.sh` (Resend, domain already on Cloudflare). Reply-to: `hello@placement.sh`.
+**From:** a Shortlist mailbox (`@shortlist.io`), not `hello@placement.sh`. Reply-to: the same Shortlist address. v1 can be sent by a human (Anja/ops) from existing Google Workspace; Worker automation later uses that same From. Do not wait on Cloudflare Email Sending or a placement.sh sending domain.
 
 | event | when | says | never says |
 |---|---|---|---|
-| `account.created` | `register_account` | you have an account; how to add the MCP; next step is prepaid credits | Shortlist, publisher names, free listings |
+| `account.created` | `register_account` | you have an account; placement.sh is a Shortlist product; how to add the MCP; next step is prepaid credits | publisher names, free listings |
 | `credits.added` | Checkout completed | amount, new available balance | last4 unnecessary |
 | `order.received` | `submit_placement` accepted | order id, listed price, “we’ll email when it’s live” | domain |
 | `order.needs_revision` | auto_screen failed **and** the agent is gone (no follow-up call in 30 min) | the structured error in English | domain |
@@ -130,7 +130,7 @@ v1 sender: one mailbox (Nenad/Martin — confirm who). v2: rotate identities.
 
 ### C. DNS
 
-On the placement.sh zone: SPF, DKIM, DMARC for Resend. Don’t wait until the first `credits.added` lands in spam.
+Buyer mail authenticates as **shortlist.io** (existing Shortlist Google Workspace / SPF / DKIM). Do not add Email Routing MX on the placement.sh apex. Cloudflare Email Sending on placement.sh is not required for v1.
 
 ---
 
@@ -257,9 +257,8 @@ Help, homepage agent panels, and `skills/placement/SKILL.md` update when step 1 
 ```
 STRIPE_SECRET_KEY           # Restricted key on Shortlist's Stripe (v1)
 STRIPE_WEBHOOK_SECRET
-RESEND_API_KEY
-EMAIL_FROM=hello@placement.sh
-GMAIL_*                     # operator drafts only
+EMAIL_FROM                  # @shortlist.io mailbox (not hello@placement.sh)
+GMAIL_*                     # operator drafts only; also fine for v1 human-sent buyer mail
 XAI_API_KEY                 # enrich script, not public MCP
 ```
 

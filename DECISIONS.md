@@ -124,7 +124,7 @@ Recorded in `SPEC-PAID-PATH.md`. Settled in that session:
 | 2b | Which Stripe account | **Shortlist’s existing Stripe for v1.** Metadata `product=placement.sh` on every session so we don’t mix with other Shortlist charges. Checkout branded placement.sh. Dedicated account later if needed. |
 | 3 | Who writes the post | **The customer’s agent.** `get_writing_brief` + `submit_placement` with finished markdown. Auto-screen returns one machine-actionable error; agent rewrites in-thread. Pitches without a body are `CONTENT_REQUIRED`. |
 | 4 | Site research / Grok crawl | **We fetch, Grok API writes the profile, D1 stores it.** Do not crawl 9k URLs inside a Grok chat. Public summary is brand-scrubbed; private summary is operator-only. Highest score first. |
-| 5 | Emails | Two pipes: Resend from `hello@placement.sh` (buyer: account, credits, order, published, refund). Gmail **drafts** in the Shortlist mailbox for publisher outreach — never From: placement.sh. |
+| 5 | Emails | Two pipes: buyer mail **From `@shortlist.io`** (account, credits, order, published, refund). Gmail **drafts** in the Shortlist mailbox for publisher outreach — never From: placement.sh. *(From-address updated 2026-08-18: not hello@placement.sh.)* |
 
 `create_campaign` remaining a stub is now an explicit gap this spec closes (build order in SPEC-PAID-PATH §5).
 
@@ -135,6 +135,18 @@ David, after a Grok session on upcoach.com: a score-87 / DR-92 **$0 newsletter s
 **Decision:** buyer MCP is paid placements only. Hide `cost_type=free`, `listed_price=0`, and non-`paid_placement` modes from `estimate` / `search_publishers` / `get_publisher` / `inventory_stats`. Remove `claim_free_placement` (`TOOL_REMOVED` if an old client still calls it). `help`, `register_account`, `account_status`, and `create_campaign` must tell the agent: looking is free → ask the human for an email → register → prepaid credits. Never offer Medium / Substack / self-serve as a consolation prize.
 
 Rows stay in D1 for the operator console. This supersedes the 2026-08-17 "free placements stay free and are the trial" call.
+
+## 2026-08-18 — buyer website names Shortlist (trust, not quiet)
+
+Paying humans land on a site with no company, no people, no aged domain. That reads like a scam when a Stripe Checkout is next. David: put Shortlist on the site, subtly; link the company and the team page so a buyer can see real people. (“shoppers.io” in the ask is the Shortlist team page at [shortlist.io/about-us](https://shortlist.io/about-us/).)
+
+**Decision:**
+- **Human website (placement.sh HTML):** quiet ownership line in the footer — “A Shortlist product — publisher placements since 2018” plus links to [shortlist.io](https://shortlist.io/) and [the team](https://shortlist.io/about-us/). Not a banner, not “programmatic link placement at scale.”
+- **Agent surfaces stay quiet:** MCP tools, `help`, `/llms.txt`, server card. Agents must not pitch Shortlist in a transcript a publisher could see.
+- **Buyer mail From `@shortlist.io`**, not `hello@placement.sh`. Anja/ops use the Shortlist mailbox. Skip Cloudflare Email Sending / Resend-on-placement.sh for v1 buyer mail.
+- **Publisher outreach unchanged:** named Shortlist human, never From placement.sh.
+
+This supersedes the 2026-08-13 “do NOT put Shortlist in the footer” call in SPEC §14. Concealment still applies to inventory and to agent copy; it no longer applies to the human paying page.
 
 ## Still open
 

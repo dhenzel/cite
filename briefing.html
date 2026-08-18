@@ -256,11 +256,21 @@
       font-size: 0.92rem;
     }
 
+    @page {
+      size: A4;
+      margin: 12mm 12mm 14mm;
+    }
+
     @media print {
-      body { background: white; }
-      .sheet { padding: 0; }
+      html, body {
+        background: var(--paper);
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+      }
+      .sheet { padding: 8px 4px 24px; max-width: none; }
       nav.toc { display: none; }
-      .step, .card, .callout { break-inside: avoid; }
+      .step, .card, .callout, .row, table { break-inside: avoid; }
+      a { color: inherit; text-decoration: none; }
     }
   </style>
 </head>

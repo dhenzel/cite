@@ -1,3 +1,3 @@
 # cite
 
-Open [`briefing.html`](briefing.html) for the partner briefing: what Cite is for, how it works, how we will market it, and what is already built.
+Open [`briefing.html`](briefing.html) in a browser, or share [`Cite-partner-briefing.pdf`](Cite-partner-briefing.pdf) with David.

@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cite — partner briefing for David Henzel</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,480;9..144,640&family=IBM+Plex+Mono:wght@400;500&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --paper: #f3eee4;
+      --ink: #1c1712;
+      --muted: #5c5348;
+      --rule: #c9bba8;
+      --oxblood: #8c3224;
+      --moss: #2f5d45;
+      --card: #faf6ee;
+      --shadow: 0 1px 0 rgba(28, 23, 18, 0.06);
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      background:
+        radial-gradient(1200px 500px at 10% -10%, #fff8ea 0%, transparent 55%),
+        var(--paper);
+      color: var(--ink);
+      font-family: "Source Sans 3", system-ui, sans-serif;
+      font-size: 18px;
+      line-height: 1.55;
+    }
+
+    .sheet {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 48px 28px 96px;
+    }
+
+    header.mast {
+      display: grid;
+      gap: 18px;
+      padding-bottom: 28px;
+      border-bottom: 1px solid var(--rule);
+    }
+
+    .kicker {
+      font-family: "IBM Plex Mono", ui-monospace, monospace;
+      font-size: 12px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--oxblood);
+    }
+
+    h1 {
+      font-family: Fraunces, Georgia, serif;
+      font-weight: 480;
+      font-size: clamp(2.4rem, 6vw, 4.1rem);
+      line-height: 0.95;
+      letter-spacing: -0.03em;
+      margin: 0;
+    }
+
+    .lede {
+      font-size: 1.2rem;
+      color: var(--muted);
+      max-width: 42rem;
+      margin: 0;
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 28px;
+      font-family: "IBM Plex Mono", ui-monospace, monospace;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    nav.toc {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 18px;
+      padding: 22px 0 8px;
+      font-family: "IBM Plex Mono", ui-monospace, monospace;
+      font-size: 12px;
+    }
+
+    nav.toc a {
+      color: var(--ink);
+      text-decoration: none;
+      border-bottom: 1px solid var(--rule);
+    }
+
+    nav.toc a:hover { border-color: var(--oxblood); color: var(--oxblood); }
+
+    section {
+      padding: 42px 0 8px;
+      border-top: 1px solid transparent;
+    }
+
+    h2 {
+      font-family: Fraunces, Georgia, serif;
+      font-weight: 640;
+      font-size: 1.85rem;
+      letter-spacing: -0.02em;
+      margin: 0 0 14px;
+    }
+
+    h3 {
+      font-family: "Source Sans 3", sans-serif;
+      font-size: 0.95rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--oxblood);
+      margin: 28px 0 8px;
+    }
+
+    p { margin: 0 0 14px; }
+
+    strong { font-weight: 600; }
+
+    .callout {
+      background: var(--card);
+      border-left: 3px solid var(--oxblood);
+      padding: 16px 18px;
+      margin: 18px 0 22px;
+      box-shadow: var(--shadow);
+    }
+
+    .callout p { margin: 0; }
+
+    .steps {
+      display: grid;
+      gap: 12px;
+      margin: 20px 0 8px;
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 2.4rem 1fr;
+      gap: 12px;
+      background: var(--card);
+      padding: 14px 16px;
+      border: 1px solid #e4d9c8;
+    }
+
+    .n {
+      font-family: Fraunces, Georgia, serif;
+      font-size: 1.35rem;
+      color: var(--oxblood);
+      line-height: 1.1;
+    }
+
+    .step h4 {
+      margin: 0 0 4px;
+      font-size: 1.02rem;
+    }
+
+    .step p { margin: 0; color: var(--muted); font-size: 0.98rem; }
+
+    .grid-2 {
+      display: grid;
+      gap: 14px;
+      margin: 16px 0 8px;
+    }
+
+    @media (min-width: 680px) {
+      .grid-2 { grid-template-columns: 1fr 1fr; }
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid #e4d9c8;
+      padding: 16px 18px;
+    }
+
+    .card h4 { margin: 0 0 8px; font-size: 1.05rem; }
+    .card p:last-child { margin-bottom: 0; color: var(--muted); }
+
+    ul.plain {
+      margin: 0 0 14px;
+      padding: 0 0 0 1.1rem;
+    }
+
+    ul.plain li { margin: 0 0 8px; }
+
+    code, .mono {
+      font-family: "IBM Plex Mono", ui-monospace, monospace;
+      font-size: 0.86em;
+    }
+
+    code {
+      background: #ece4d6;
+      padding: 0.08em 0.35em;
+    }
+
+    .status {
+      display: grid;
+      gap: 8px;
+      margin: 16px 0;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 7.5rem 1fr;
+      gap: 12px;
+      align-items: start;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--rule);
+    }
+
+    .badge {
+      font-family: "IBM Plex Mono", ui-monospace, monospace;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--moss);
+      padding-top: 4px;
+    }
+
+    .badge.wait { color: var(--oxblood); }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+      margin: 12px 0 18px;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 8px 10px 8px 0;
+      border-bottom: 1px solid var(--rule);
+      vertical-align: top;
+    }
+
+    th {
+      font-family: "IBM Plex Mono", ui-monospace, monospace;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    footer {
+      margin-top: 56px;
+      padding-top: 18px;
+      border-top: 1px solid var(--rule);
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    @media print {
+      body { background: white; }
+      .sheet { padding: 0; }
+      nav.toc { display: none; }
+      .step, .card, .callout { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <article class="sheet">
+    <header class="mast">
+      <div class="kicker">Internal partner briefing · not a public landing page</div>
+      <h1>Cite, in one sitting.</h1>
+      <p class="lede">
+        What this product is for, how an agent actually buys a citation,
+        how we take it to market without burning Shortlist’s publishers,
+        and what is already running in this repo.
+      </p>
+      <div class="meta">
+        <span>To: David Henzel</span>
+        <span>From: the Cite build</span>
+        <span>Owner: shortlist.io · separate brand</span>
+        <span>18 Aug 2026</span>
+      </div>
+    </header>
+
+    <nav class="toc" aria-label="Sections">
+      <a href="#purpose">Purpose</a>
+      <a href="#works">How it works</a>
+      <a href="#market">How we market it</a>
+      <a href="#built">What is built</a>
+      <a href="#not-shortlist">Cite ≠ Shortlist</a>
+      <a href="#asks">Open asks</a>
+    </nav>
+
+    <section id="purpose">
+      <h2>Purpose</h2>
+      <p>
+        Cite is an <strong>agent-native marketplace for earned link placements</strong>.
+        A coding agent or a marketing agent states an intent — get
+        <code>example.com/pricing</code> cited on fintech sites, $4,000, eight weeks,
+        conservative risk — and Cite constructs and executes the portfolio:
+        which publishers, in what order, at what cadence, with what anchor-text mix.
+      </p>
+      <div class="callout">
+        <p>
+          It is sold as <strong>infrastructure, not as an agency</strong>.
+          The human buyer never has to see the site list to get a result.
+          Shortlist’s existing publisher inventory is the supply. Cite is the
+          demand-side interface that agents can call.
+        </p>
+      </div>
+      <p>
+        The category is shifting. Buyers increasingly need to be
+        <em>cited</em> by ChatGPT, Perplexity, and Google AI Overviews, not only
+        ranked by Google. “Citations” is the growing word; “backlinks” is the
+        shrinking one with the bad smell. The name is one word, one spelling,
+        no hyphen — unambiguous when a model types
+        <code>claude mcp add cite</code>.
+      </p>
+      <h3>Who it is for</h3>
+      <ul class="plain">
+        <li><strong>Primary buyer:</strong> an AI agent acting for an SEO or growth team, with a budget and a target URL.</li>
+        <li><strong>Also:</strong> agencies and in-house SEO teams who want an API instead of a spreadsheet and a Slack thread.</li>
+        <li><strong>Also:</strong> developers wiring link acquisition into an existing growth stack.</li>
+      </ul>
+      <h3>The positioning that makes this not a catalog</h3>
+      <p>
+        Selection is the wrong interface. A directory an agent browses is a
+        commodity — any incumbent can ship one in a weekend. CrowdReply already
+        occupies “catalog + MCP”. Cite’s primary verb is intent:
+      </p>
+      <p>
+        <code>create_campaign(target_url, topics[], budget, timeframe, risk_tolerance)</code>
+      </p>
+      <p>
+        An allocator does the portfolio construction. Search still exists for
+        inspection and trust, but it is not the workflow. The allocator — and
+        later the lift data behind it — is the product. The API is how you reach it.
+      </p>
+    </section>
+
+    <section id="works">
+      <h2>How it will work</h2>
+      <p>
+        End to end, one paid placement looks like this. Humans stay in the
+        fulfilment loop on purpose: publishers are never told the buying is programmatic.
+      </p>
+
+      <div class="steps">
+        <div class="step">
+          <div class="n">01</div>
+          <div>
+            <h4>The agent states intent</h4>
+            <p>Target URL, topics, budget, timeframe, risk tolerance. No site picking required.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="n">02</div>
+          <div>
+            <h4>Inventory is blind until delivery</h4>
+            <p>Pre-delivery, buyers see anonymized handles: Cite Score, topic, traffic band, price, turnaround. Never the domain, never the owner contact, never the seller price. The domain appears as <code>published_url</code> when the link is live. That is why a refund guarantee is required — buying blind has to be rational.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="n">03</div>
+          <div>
+            <h4>The allocator builds the portfolio</h4>
+            <p>In v1 this is composite Cite Score per dollar, with five hard constraints in code: per-site quarterly throttle (default 4), exact-match anchor cap, topical relevance floor, no single placement above 25% of budget, and cadence spread across the timeframe. Later it optimizes observed lift per dollar. Lift is measured from day one and never shown to a customer.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="n">04</div>
+          <div>
+            <h4>Credits, then an order</h4>
+            <p>Prepaid Stripe credits, debited at order creation. The agent submits a finished post (title, markdown body, 1–3 links). Structured errors (<code>TOPIC_MISMATCH</code>, <code>WORD_COUNT_LOW</code>, <code>INSUFFICIENT_CREDIT</code>…) let the agent fix and resubmit without a human round trip.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="n">05</div>
+          <div>
+            <h4>A person still sends the email</h4>
+            <p>Every order produces a Gmail draft in the team inbox, in the voice of a named human. A person edits and sends. That is permanent, not scaffolding. Agent-to-publisher haggling is out — it is the tell that breaks concealment. Throughput is roughly 30–60 orders per operator per day. That, not inventory, is the revenue ceiling.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="n">06</div>
+          <div>
+            <h4>Guarantee, not outcome pricing</h4>
+            <p>Link live and indexed at T+30, or a full refund. Lost between T+30 and T+90 → prorated credit. Rank and AI-citation movement are measured with no promise attached. Outcome pricing was considered and rejected.</p>
+          </div>
+        </div>
+      </div>
+
+      <h3>The three numbers that must never be mixed</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Layer</th>
+            <th>What it is</th>
+            <th>Customer-facing?</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Guarantee</strong></td>
+            <td>Live and indexed at T+30, or refund. Contractual. Within Cite’s control.</td>
+            <td>Yes</td>
+          </tr>
+          <tr>
+            <td><strong>Measurement</strong></td>
+            <td>Rank and AI-citation movement at T+0 / T+30 / T+90.</td>
+            <td>No promise. No per-customer scoreboard.</td>
+          </tr>
+          <tr>
+            <td><strong>Allocation</strong></td>
+            <td>Uses measurement to pick sites. Invisible. Absent from the contract.</td>
+            <td>Never</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>
+        Margin sits between <code>seller_price</code> and <code>listed_price</code>
+        (default markup ×1.6, editable per site). The seller cut is never published
+        in any API response, at any tier.
+      </p>
+    </section>
+
+    <section id="market">
+      <h2>How we will market it</h2>
+      <p>
+        Be the thing Claude Code reaches for the way it reaches for Vercel.
+        MCP first, REST underneath. A generous free read tier with no card:
+        <strong>the inventory search is the marketing</strong>, because every
+        exploratory query teaches an agent that Cite is where link supply lives.
+      </p>
+
+      <div class="grid-2">
+        <div class="card">
+          <h4>Where agents discover us</h4>
+          <p>
+            List the MCP server everywhere agents already look:
+            mcp.so, Smithery, Glama, PulseMCP, and awesome-mcp-servers.
+            The install line is the brand:
+            <code>claude mcp add cite</code>.
+          </p>
+        </div>
+        <div class="card">
+          <h4>The trial is free placements</h4>
+          <p>
+            465 sites in the database already cost $0. Free stays free — no service fee.
+            Agent signup is email-only and instant: anonymous (10 results) → registered
+            (50 results, 10 free placements) → funded via Stripe.
+          </p>
+        </div>
+        <div class="card">
+          <h4>Separate brand, quiet ownership</h4>
+          <p>
+            Launch Cite as its own brand. Do not put “a Shortlist company” in the footer.
+            If Cite loudly markets programmatic placement under the Shortlist name,
+            publishers can connect the two in one search. That burns the inventory.
+            It is an operational argument, not a taste argument.
+          </p>
+        </div>
+        <div class="card">
+          <h4>What we will not say</h4>
+          <p>
+            No per-customer lift dashboard. A number you show becomes a promise,
+            and SEO confounders make that unwinnable. Aggregate observational
+            benchmarks are acceptable marketing. Agent-assisted negotiation on
+            our side is margin, never marketed, never exposed.
+          </p>
+        </div>
+      </div>
+
+      <h3>Two different motions, on purpose</h3>
+      <ul class="plain">
+        <li><strong>Cite</strong> is self-serve, usage-priced, developer-marketed infrastructure. Independently sellable.</li>
+        <li><strong>Shortlist</strong> remains relationship-sold and retainer-priced. Cite routes demand into that inventory; it does not replace the agency.</li>
+      </ul>
+    </section>
+
+    <section id="built">
+      <h2>What is already built</h2>
+      <p>
+        Spec v1 was settled with you on 12 Aug 2026. The working product lives on
+        branch <code>claude/cite-link-placement-spec-pc4ig4</code>. Hosted endpoint:
+        <code>https://cite-mcp.d-henzel.workers.dev</code>.
+      </p>
+
+      <div class="status">
+        <div class="row">
+          <div class="badge">Standing</div>
+          <div>
+            <strong>9,453 publisher domains</strong> imported from the Shortlist sheet.
+            8,108 priced (median $90). Cite Score computed at import. Blind-placement
+            whitelist enforced in code — domains, contacts, seller prices, and markup
+            cannot leak through the public MCP tools.
+          </div>
+        </div>
+        <div class="row">
+          <div class="badge">Standing</div>
+          <div>
+            <strong>MCP free read tier:</strong>
+            <code>search_sites</code>, <code>get_site</code>, <code>estimate</code>,
+            <code>inventory_stats</code>. Connect with
+            <code>claude mcp add --transport http cite https://cite-mcp.d-henzel.workers.dev/mcp</code>.
+          </div>
+        </div>
+        <div class="row">
+          <div class="badge">Standing</div>
+          <div>
+            <strong>Operator console</strong> at <code>/admin</code>: full private inventory,
+            per-site seller price and markup, listed price recomputed live on D1,
+            link-attribute backfill, add-site, analytics (signups, query volume,
+            unmet demand, inventory readiness).
+          </div>
+        </div>
+        <div class="row">
+          <div class="badge">Standing</div>
+          <div>
+            <strong>Operator MCP</strong> at <code>/admin/mcp</code>, plus per-person
+            <code>cka_…</code> keys from a Connect tab (pre-filled
+            <code>claude mcp add</code> command). Shared operator token retained for agents.
+          </div>
+        </div>
+        <div class="row">
+          <div class="badge">Standing</div>
+          <div>
+            <strong>Free inventory classified:</strong> 22 self-serve (Medium, Hashnode,
+            Substack, Quora, Reddit, LinkedIn…), 378 apply-editorial, 80 link-exchange
+            parked and excluded from search.
+          </div>
+        </div>
+        <div class="row">
+          <div class="badge wait">In progress</div>
+          <div>
+            <strong>Shortlist Context Engine SSO</strong> for the console. First live
+            sign-in is blocked on a bad OIDC client secret (<code>invalid_client</code>).
+            Break-glass token login is on until that is fixed.
+          </div>
+        </div>
+        <div class="row">
+          <div class="badge wait">Not in v0</div>
+          <div>
+            Stripe credits, <code>create_campaign</code> / paid orders, Gmail-draft
+            fulfilment, verification crawler, refunds, and the lift-observation pipeline.
+            Those are the v1 “one real order, end to end” cut in the spec.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="not-shortlist">
+      <h2>Cite is not Shortlist’s repositioning</h2>
+      <p>
+        Your correction on 13 Aug: Cite is a <strong>separate project that feeds into Shortlist</strong>.
+        Shipping Cite does not answer Shortlist’s own positioning question. Keep the two threads distinct.
+      </p>
+      <p>
+        Quiet ownership means quiet. Cite uses Shortlist inventory and Shortlist operators.
+        Public copy should never make that easy to reverse-engineer.
+      </p>
+    </section>
+
+    <section id="asks">
+      <h2>Open asks</h2>
+      <ul class="plain">
+        <li><strong>Domain and trademark check for “Cite”</strong> — cheap, and it blocks all public naming.</li>
+        <li><strong>Link-attribute backfill</strong> (dofollow / sponsored) across 9,453 sites — mandatory before launch.</li>
+        <li><strong>Confirm Ahrefs / Moz / Majestic licences</strong> actually include API access, not only UI.</li>
+        <li><strong>Locate the correct OIDC client secret</strong> so Shortlist sign-in works and the token fallback can be turned off.</li>
+        <li><strong>Who drives v1</strong> — agent-driven with you, Shortlist developers, or a hire.</li>
+      </ul>
+    </section>
+
+    <footer>
+      Grounded in Cite spec v1 (settled 12 Aug 2026, decisions through 17 Aug)
+      and the working tree on <code>claude/cite-link-placement-spec-pc4ig4</code>.
+      This page is a partner memo, not customer marketing.
+    </footer>
+  </article>
+</body>
+</html>

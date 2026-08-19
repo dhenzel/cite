@@ -1009,7 +1009,7 @@ async function handleAdminApi(req: Request, env: Env, path: string): Promise<Res
   if (path === '/admin/api/orders' && req.method === 'GET') {
     const rows = (await env.DB.prepare(`
       SELECT o.id, o.state, o.publisher_id, s.domain, o.target_url, o.anchor_text, o.title,
-             o.listed_price_cents, o.word_count, o.created_at, a.email AS buyer_email
+             o.body, o.author_bio, o.listed_price_cents, o.word_count, o.created_at, a.email AS buyer_email
       FROM placement_orders o
       LEFT JOIN sites s ON s.id = o.publisher_id
       LEFT JOIN accounts a ON a.api_key = o.api_key

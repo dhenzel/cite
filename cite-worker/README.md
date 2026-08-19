@@ -7,7 +7,7 @@ Cloudflare Worker serving:
 - **`GET /paid`** — post-Checkout landing (“credits added — go back to your agent and say paid”).
 - **`POST /webhooks/stripe`** — credits the wallet on `checkout.session.completed` when `metadata.product=placement.sh`.
 - **`GET /llms.txt`**, **`GET /.well-known/mcp/server.json`** — agent discovery.
-- **`/admin`** — operator console: inventory plus an **Orders** tab for agent-submitted posts (domain visible to operators only). Guarded by Shortlist SSO / `ADMIN_TOKEN`.
+- **`/admin`** — operator console (Shortlist navy/mint): inventory plus an **Orders** tab. Submitted posts stay here; ops get mail, copy the post, and send it to the publisher themselves. Domain is visible to operators only. Guarded by Shortlist SSO / `ADMIN_TOKEN`.
 
 Public language is **publisher / placement**, never site. D1 table names stay `sites` so the live catalog does not need a migration.
 

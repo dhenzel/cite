@@ -23,6 +23,12 @@ await pg.route('**/admin/api/**', r => {
   if (u.includes('/api/stats')) return r.fulfill({ json: { sites: 9467, active: 9467, priced: 8210, avg_markup: 1.6, avg_margin: 60, attr_unknown: 9400 } });
   if (u.includes('/api/analytics')) return r.fulfill({ json: { accounts: { total: 0 }, activity: {}, by_tool: [], daily: [], signups: [], unmet_demand: [], top_topics: [], free_placements_by_site: [], inventory_readiness: {} } });
   if (u.includes('/api/keys')) return r.fulfill({ json: { keys: [], mcp_url: 'http://cite.local/admin/mcp' } });
+  if (u.includes('/api/orders')) return r.fulfill({ json: { orders: [{
+    id: 'ord_1', state: 'human_review', publisher_id: 'cs_1', domain: 'secret.com',
+    target_url: 'https://buyer.test/', anchor_text: 'Buyer', title: 'A post',
+    body: 'Hello world post body', listed_price_cents: 16000, word_count: 800,
+    created_at: '2026-08-19T12:00:00Z', buyer_email: 'a@b.test',
+  }] } });
   if (u.includes('/api/sites')) return r.fulfill({ json: { total: 9467, page: 1, per_page: 50, sites } });
   return r.fulfill({ json: {} });
 });
@@ -31,7 +37,7 @@ await pg.waitForTimeout(1200);
 const rowCount = await pg.locator('#rows tr').count();
 console.log('rows:', rowCount);
 if (rowCount < 1) { console.error('FAIL: inventory table rendered no rows'); process.exitCode = 1; }
-for (const tab of ['ana', 'eng', 'key']) {
+for (const tab of ['ord', 'ana', 'eng', 'key']) {
   await pg.click('#tab-' + tab);
   await pg.waitForTimeout(500);
   const visible = await pg.locator('#pane-' + tab).isVisible();

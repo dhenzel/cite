@@ -406,6 +406,7 @@ const fs2 = (path: string, init?: RequestInit) => worker.fetch(new Request(`http
 r = await fs2('/admin');
 let page = await r.text();
 assert(r.status === 200 && page.includes('Sign in with Shortlist'), 'console shows the Sign in with Shortlist button');
+assert(page.includes('#17204B') && page.includes('#30D2AD') && page.includes('Inter'), 'sign-in uses Shortlist navy, mint and Inter');
 assert(page.indexOf('Sign in with Shortlist') < page.indexOf('operator token'),
   'SSO is the primary path; the operator token is a secondary fallback');
 
@@ -455,6 +456,8 @@ r = await fs2('/admin', { headers: { cookie } });
   const consoleHtml = await r.text();
   assert(consoleHtml.includes('operator console'), 'session opens the console');
   assert(consoleHtml.includes('Orders'), 'console has an Orders tab');
+  assert(consoleHtml.includes('#17204B') && consoleHtml.includes('#30D2AD'), 'console uses Shortlist navy and mint');
+  assert(consoleHtml.includes('Copy post'), 'Orders tab can copy the post out of the platform');
 }
 r = await fs2('/admin/api/sites?q=secret', { headers: { cookie } });
 const sitesPayload = await r.json();
@@ -984,6 +987,8 @@ console.log('\nall admin-key checks passed');
   assert(r.status === 200 && orders.orders?.[0]?.domain === 'secret-example.com', 'ops Orders API shows the publisher domain');
   assert(orders.orders[0].buyer_email === 'payer@customer.test', 'ops Orders API shows the buyer');
   assert(orders.orders[0].title.includes('durable record'), 'ops Orders API shows the submitted title');
+  assert(typeof orders.orders[0].body === 'string' && orders.orders[0].body.length > 200,
+    'ops Orders API includes the post body so operators can copy it');
 
   const other = JSON.stringify({
     type: 'checkout.session.completed',

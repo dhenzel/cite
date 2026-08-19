@@ -10,28 +10,31 @@ export function signInPage(opts: { error?: string; configured?: boolean; tokenFa
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>placement.sh — Sign in</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  :root { --bg:#FBFAF8; --surface:#fff; --ink:#1A2230; --muted:#616C7E; --line:#E3E1DB;
-          --accent:#14655A; --accent-ink:#fff; --bad:#A33A2E; --bad-soft:rgba(163,58,46,.08); }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-    --bg:#0F141B; --surface:#161D27; --ink:#E7EBF0; --muted:#9BA5B4; --line:#273140;
-    --accent:#6FD3C0; --accent-ink:#08131A; --bad:#E0796B; --bad-soft:rgba(224,121,107,.12); } }
-  :root[data-theme="dark"] { --bg:#0F141B; --surface:#161D27; --ink:#E7EBF0; --muted:#9BA5B4;
-    --line:#273140; --accent:#6FD3C0; --accent-ink:#08131A; --bad:#E0796B; --bad-soft:rgba(224,121,107,.12); }
+  /* Shortlist.io tokens: navy #17204B, mint #30D2AD / #39D6B4, cyan #00AADD. */
+  :root { --bg:#F7F8FB; --surface:#fff; --ink:#17204B; --muted:#6e7aa4; --line:#e6e9ec;
+          --accent:#30D2AD; --accent-2:#39D6B4; --accent-ink:#17204B; --cyan:#00AADD;
+          --bad:#c0453a; --bad-soft:rgba(192,69,58,.08); }
   * { box-sizing:border-box; }
   body { margin:0; min-height:100vh; display:grid; place-items:center; background:var(--bg); color:var(--ink);
-         font:15px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif; padding:24px; }
+         font:15px/1.6 Inter,system-ui,-apple-system,"Segoe UI",sans-serif; padding:24px; }
   .box { background:var(--surface); border:1px solid var(--line); border-radius:14px;
-         padding:34px 34px 30px; max-width:430px; width:100%; }
-  h1 { margin:0 0 6px; font-size:23px; letter-spacing:-.01em; }
+         padding:34px 34px 30px; max-width:430px; width:100%; box-shadow:0 10px 30px rgba(23,32,75,.06); }
+  .brand { margin:0 0 14px; font-size:12px; font-weight:600; letter-spacing:.08em; text-transform:uppercase;
+           color:var(--cyan); }
+  h1 { margin:0 0 6px; font-size:23px; letter-spacing:-.02em; color:var(--ink); }
   .sub { color:var(--muted); margin:0 0 24px; font-size:14.5px; }
   a.btn { display:block; text-align:center; background:var(--accent); color:var(--accent-ink);
           text-decoration:none; font-weight:650; padding:13px 18px; border-radius:9px; font-size:15.5px; }
-  a.btn:hover { filter:brightness(1.06); }
+  a.btn:hover { background:var(--accent-2); }
   a.btn:focus-visible { outline:2px solid var(--ink); outline-offset:2px; }
   .err { background:var(--bad-soft); border-left:3px solid var(--bad); color:var(--ink);
          padding:12px 14px; border-radius:0 8px 8px 0; margin:0 0 20px; font-size:14px; }
   .foot { color:var(--muted); font-size:12.5px; margin:20px 0 0; }
+  .foot a { color:var(--cyan); }
   code { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12.5px; }
   .fallback { margin-top:22px; border-top:1px solid var(--line); padding-top:16px; }
   .fallback summary { cursor:pointer; color:var(--muted); font-size:13.5px; }
@@ -44,6 +47,7 @@ export function signInPage(opts: { error?: string; configured?: boolean; tokenFa
 </head>
 <body>
   <div class="box">
+    <p class="brand">Shortlist</p>
     <h1>placement.sh operator console</h1>
     <p class="sub">Inventory, pricing and margin for the Shortlist publisher network.</p>
     ${error ? `<p class="err">${esc(error)}</p>` : ''}
@@ -64,23 +68,29 @@ export function signInPage(opts: { error?: string; configured?: boolean; tokenFa
 </html>`;
 }
 
-// Operator console UI (SPEC §16) — one inline page, no external assets.
-// Served at /admin behind an SSO session; talks to /admin/api/* with the
-// session cookie.
+// Operator console (SPEC §16). Served at /admin behind an SSO session.
+// Visual tokens match shortlist.io: Inter, navy #17204B, mint #30D2AD, cyan #00AADD.
 export const ADMIN_HTML = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>placement.sh — Operator Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  :root { --bg:#10141d; --surface:#171c29; --line:#2a3145; --ink:#e8eaf0; --muted:#98a0b3;
-          --accent:#8fa8ff; --good:#4fc08d; --bad:#e0766c; --warn:#d8a94e; }
+  :root { --bg:#F7F8FB; --surface:#fff; --line:#e6e9ec; --ink:#17204B; --muted:#6e7aa4;
+          --accent:#30D2AD; --accent-2:#39D6B4; --cyan:#00AADD; --good:#0f8a6e;
+          --bad:#c0453a; --warn:#c48a12; }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--ink);
-         font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; }
+         font:14px/1.5 Inter,system-ui,-apple-system,"Segoe UI",sans-serif; }
   .wrap { max-width:1240px; margin:0 auto; padding:20px 24px 60px; }
-  h1 { font-size:20px; margin:0; } h1 small { color:var(--muted); font-weight:400; }
+  h1 { font-size:20px; margin:0; letter-spacing:-.02em; }
+  h1 small { color:var(--muted); font-weight:400; }
+  h1 .brand { color:var(--cyan); font-size:11px; font-weight:600; letter-spacing:.08em;
+              text-transform:uppercase; display:block; margin-bottom:4px; }
   header { display:flex; align-items:baseline; justify-content:space-between; gap:16px;
            padding-bottom:14px; border-bottom:1px solid var(--line); margin-bottom:16px; }
   .stats { display:flex; gap:20px; flex-wrap:wrap; color:var(--muted); font-size:13px; }
@@ -90,7 +100,9 @@ export const ADMIN_HTML = `<!doctype html>
   input, select, button { background:var(--surface); color:var(--ink); border:1px solid var(--line);
     border-radius:7px; padding:7px 10px; font:inherit; }
   input:focus, select:focus { outline:2px solid var(--accent); outline-offset:-1px; }
-  button { cursor:pointer; } button.primary { background:var(--accent); color:#10141d; border-color:var(--accent); font-weight:600; }
+  button { cursor:pointer; }
+  button.primary { background:var(--accent); color:var(--ink); border-color:var(--accent); font-weight:600; }
+  button.primary:hover { background:var(--accent-2); }
   table { width:100%; border-collapse:collapse; font-size:13px; }
   th { text-align:left; color:var(--muted); font-weight:500; padding:8px 10px; border-bottom:1px solid var(--line);
        position:sticky; top:0; background:var(--bg); white-space:nowrap; }
@@ -100,27 +112,28 @@ export const ADMIN_HTML = `<!doctype html>
   td select { padding:4px 6px; }
   .domain { font-weight:600; } .sub { color:var(--muted); font-size:12px; }
   .margin-pos { color:var(--good); } .margin-neg { color:var(--bad); }
-  .pill { display:inline-block; padding:1px 8px; border-radius:99px; font-size:12px; }
-  .pill.active { background:rgba(79,192,141,.12); color:var(--good); }
-  .pill.paused { background:rgba(216,169,78,.12); color:var(--warn); }
-  .pill.burned { background:rgba(224,118,108,.12); color:var(--bad); }
-  .pill.unknown { background:rgba(152,160,179,.12); color:var(--muted); }
+  .pill { display:inline-block; padding:1px 8px; border-radius:99px; font-size:12px;
+          background:rgba(110,122,164,.12); color:var(--muted); }
+  .pill.active { background:rgba(48,210,173,.16); color:var(--good); }
+  .pill.paused { background:rgba(196,138,18,.12); color:var(--warn); }
+  .pill.burned { background:rgba(192,69,58,.12); color:var(--bad); }
+  .pill.unknown { background:rgba(110,122,164,.12); color:var(--muted); }
   #login { max-width:420px; margin:120px auto; text-align:center; }
   #login input { width:100%; margin:12px 0; text-align:center; }
   .toast { position:fixed; bottom:20px; right:20px; background:var(--surface); border:1px solid var(--line);
     border-left:3px solid var(--good); padding:10px 16px; border-radius:8px; display:none; }
   .toast.err { border-left-color:var(--bad); }
   .pager { display:flex; gap:8px; align-items:center; margin-top:14px; color:var(--muted); }
-  details { margin:14px 0; } summary { cursor:pointer; color:var(--accent); }
+  details { margin:14px 0; } summary { cursor:pointer; color:var(--cyan); }
   .addform { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:8px; margin-top:10px; }
   .tabs { display:flex; gap:6px; margin:14px 0 4px; }
   .tab { background:transparent; border:1px solid var(--line); }
-  .tab.active { background:var(--accent); color:#10141d; border-color:var(--accent); font-weight:600; }
+  .tab.active { background:var(--accent); color:var(--ink); border-color:var(--accent); font-weight:600; }
   .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin:16px 0; }
   .kpi { background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:14px 16px; }
   .kpi .n { font-size:26px; font-variant-numeric:tabular-nums; }
   .kpi .l { font-size:12px; color:var(--muted); margin-top:4px; }
-  .kpi.hi .n { color:var(--accent); }
+  .kpi.hi .n { color:var(--cyan); }
   .cols { display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:18px; }
   section h3 { font-size:14px; margin:18px 0 8px; font-weight:600; }
   section h3 small { color:var(--muted); font-weight:400; }
@@ -132,25 +145,35 @@ export const ADMIN_HTML = `<!doctype html>
   .barcell { background:linear-gradient(90deg,var(--accent) var(--w,0%),transparent 0); border-radius:3px; }
   .whoami { font-size:12.5px; color:var(--muted); display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
   .whoami b { color:var(--ink); }
-  .whoami a { color:var(--accent); }
-  .abil { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; background:rgba(143,168,255,.10);
-          color:var(--accent); padding:1px 6px; border-radius:4px; }
-  .banner { background:rgba(216,169,78,.10); border-left:3px solid var(--warn); color:var(--ink);
+  .whoami a { color:var(--cyan); }
+  .abil { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; background:rgba(48,210,173,.14);
+          color:var(--ink); padding:1px 6px; border-radius:4px; }
+  .banner { background:rgba(196,138,18,.10); border-left:3px solid var(--warn); color:var(--ink);
             padding:10px 14px; border-radius:0 8px 8px 0; margin:12px 0; font-size:13.5px; }
-  .banner.err { background:rgba(224,118,108,.10); border-left-color:var(--bad); }
+  .banner.err { background:rgba(192,69,58,.10); border-left-color:var(--bad); }
   .prose { max-width:70ch; color:var(--ink); font-size:14px; line-height:1.6; }
   .prose.sub { color:var(--muted); }
   .keybox { background:var(--surface); border:1px solid var(--accent); border-radius:10px; padding:14px 16px; margin:12px 0; }
   .keybox code, .cmd { display:block; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12.5px;
-    background:#0b0e14; color:#e8eaf0; padding:10px 12px; border-radius:7px; margin:8px 0; overflow-x:auto;
+    background:#17204B; color:#fff; padding:10px 12px; border-radius:7px; margin:8px 0; overflow-x:auto;
     white-space:pre-wrap; word-break:break-all; }
   .copy { font-size:12px; padding:5px 10px; }
+  .order { background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:16px 18px; margin:0 0 12px; }
+  .order-top { display:flex; flex-wrap:wrap; gap:8px 14px; align-items:baseline; margin:0 0 8px; }
+  .order-top .price { margin-left:auto; font-weight:650; font-variant-numeric:tabular-nums; }
+  .order h3 { margin:0 0 6px; font-size:16px; letter-spacing:-.01em; }
+  .order .meta { color:var(--muted); font-size:13px; margin:0 0 10px; }
+  .order .meta b { color:var(--ink); font-weight:600; }
+  .order-body { white-space:pre-wrap; word-break:break-word; font:13.5px/1.55 Inter,system-ui,sans-serif;
+    background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:12px 14px;
+    max-height:22rem; overflow:auto; margin:0 0 12px; }
+  .order .actions { display:flex; gap:8px; flex-wrap:wrap; }
 </style>
 </head>
 <body>
 <div id="app" class="wrap">
   <header>
-    <h1>placement.sh <small>operator console</small></h1>
+    <h1><span class="brand">Shortlist</span>placement.sh <small>operator console</small></h1>
     <div class="stats" id="stats"></div>
     <div class="whoami" id="whoami"></div>
   </header>
@@ -213,7 +236,7 @@ export const ADMIN_HTML = `<!doctype html>
   </div>
 
   <div id="pane-ord" style="display:none">
-    <p class="prose sub">Finished posts agents submitted. Domain is for operators only — never send it to the buyer.</p>
+    <p class="prose sub">Orders stay in this tab. When a new one arrives you get mail — copy the post here and send it to the publisher yourself. Domain is for operators only; never send it to the buyer. Context Engine writes come later.</p>
     <div id="ord_rows"></div>
   </div>
 
@@ -451,23 +474,55 @@ function showTab(t) {
   if (t === 'key') keys();
 }
 
+let ordersCache = [];
 async function loadOrders() {
   const r = await fetch('/admin/api/orders', { headers: hdrs() });
   if (r.status === 401) { location.href = '/auth/login'; return; }
   const d = await r.json();
-  $('ord_rows').innerHTML = tbl(
-    [{t:'When'},{t:'State'},{t:'Buyer'},{t:'Domain'},{t:'Title'},{t:'Target'},{t:'$',n:1},{t:'Words',n:1}],
-    (d.orders||[]).map(o => [
-      esc((o.created_at||'').slice(0,16)),
-      esc(o.state),
-      esc(o.buyer_email||''),
-      esc(o.domain || o.publisher_id),
-      esc(o.title||''),
-      esc(o.target_url||''),
-      ((o.listed_price_cents||0)/100).toFixed(0),
-      o.word_count||''
-    ]),
-    'No submitted posts yet.');
+  ordersCache = d.orders || [];
+  if (!ordersCache.length) {
+    $('ord_rows').innerHTML = '<div class="empty">No submitted posts yet.</div>';
+    return;
+  }
+  $('ord_rows').innerHTML = ordersCache.map((o, i) => {
+    const dollars = ((o.listed_price_cents || 0) / 100).toFixed(0);
+    const when = (o.created_at || '').slice(0, 16);
+    const domain = o.domain || o.publisher_id || '';
+    const anchor = o.anchor_text ? esc(o.anchor_text) + ' → ' : '';
+    return '<article class="order">'
+      + '<div class="order-top">'
+      + '<span class="pill">' + esc(o.state || '') + '</span>'
+      + '<span class="sub">' + esc(when) + '</span>'
+      + '<span class="sub">' + esc(o.word_count || '') + ' words</span>'
+      + '<span class="price">$' + dollars + '</span>'
+      + '</div>'
+      + '<h3>' + esc(o.title || '') + '</h3>'
+      + '<p class="meta"><b>' + esc(domain) + '</b> · ' + esc(o.buyer_email || '') + '</p>'
+      + '<p class="meta">' + anchor + esc(o.target_url || '') + '</p>'
+      + (o.author_bio ? '<p class="meta">bio: ' + esc(o.author_bio) + '</p>' : '')
+      + '<pre class="order-body">' + esc(o.body || '') + '</pre>'
+      + '<div class="actions">'
+      + '<button type="button" class="primary" data-copy-post="' + i + '">Copy post</button>'
+      + '<button type="button" class="copy" data-copy-details="' + i + '">Copy outreach details</button>'
+      + '</div></article>';
+  }).join('');
+}
+function copyPost(i) {
+  const o = ordersCache[i];
+  if (!o) return;
+  copyText((o.title || '') + '\\n\\n' + (o.body || ''));
+}
+function copyDetails(i) {
+  const o = ordersCache[i];
+  if (!o) return;
+  copyText([
+    'domain: ' + (o.domain || o.publisher_id || ''),
+    'buyer: ' + (o.buyer_email || ''),
+    'price: $' + ((o.listed_price_cents || 0) / 100).toFixed(0),
+    'target: ' + (o.target_url || ''),
+    'anchor: ' + (o.anchor_text || '(none)'),
+    o.author_bio ? 'bio: ' + o.author_bio : '',
+  ].filter(Boolean).join('\\n'));
 }
 
 const tbl = (headers, rows, empty) => rows.length
@@ -612,6 +667,13 @@ document.getElementById('pane-key').addEventListener('click', (ev) => {
     const el = document.getElementById(t.dataset.copy);
     if (el) copyText(el.textContent);
   }
+});
+
+document.getElementById('pane-ord').addEventListener('click', (ev) => {
+  const t = ev.target;
+  if (!t || !t.dataset) return;
+  if (t.dataset.copyPost != null) { copyPost(parseInt(t.dataset.copyPost, 10)); return; }
+  if (t.dataset.copyDetails != null) { copyDetails(parseInt(t.dataset.copyDetails, 10)); }
 });
 
 document.getElementById('rows').addEventListener('change', (ev) => {

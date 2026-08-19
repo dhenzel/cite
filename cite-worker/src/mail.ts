@@ -195,7 +195,10 @@ export function opsPlacementMail(
       `words: ${order.word_count}`,
       `at: ${new Date().toISOString()}`,
       ``,
-      `Open /admin and the Orders tab. Domain is for operators only — do not send it to the buyer.`,
+      `A new order is in the operator console.`,
+      `Open ${PRODUCT_ORIGIN}/admin → Orders. Copy the post from there and send it to the publisher yourself.`,
+      `The order stays in the platform — we are not auto-emailing publishers yet.`,
+      `Domain is for operators only — never send it to the buyer.`,
     ].join('\n'),
   };
 }

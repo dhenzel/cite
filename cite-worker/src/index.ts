@@ -23,6 +23,7 @@ import {
   probe, cachedCall, listTools, pickTool,
   EngineUnauthorized, EngineScopeDenied, EngineUnavailable,
 } from './engine.js';
+import { notifyAccountCreated, scheduleMail, type WaitUntil } from './mail.js';
 
 export interface Env {
   DB: D1Database;
@@ -37,6 +38,12 @@ export interface Env {
   ALLOW_TOKEN_CONSOLE?: string;  // "false" closes the operator-token fallback
   CITE_ADMIN_ABILITY?: string;   // default '*:read'
   CITE_ADMIN_EMAILS?: string;    // comma-separated allowlist override
+  // Buyer mail From placement@shortlist.io (Gmail Workspace, else Resend). Secrets.
+  MAIL_FROM?: string;
+  GMAIL_CLIENT_ID?: string;
+  GMAIL_CLIENT_SECRET?: string;
+  GMAIL_REFRESH_TOKEN?: string;
+  RESEND_API_KEY?: string;
 }
 
 // Looking is unlimited (no account). One MCP call is paged so a 9k catalog
@@ -234,7 +241,7 @@ export interface Account {
   orders_used: number;
 }
 
-async function runTool(env: Env, name: string, args: Row, account: Account | null): Promise<unknown> {
+async function runTool(env: Env, name: string, args: Row, account: Account | null, ctx?: WaitUntil): Promise<unknown> {
   switch (name) {
     case 'help':
       return {
@@ -407,6 +414,8 @@ async function runTool(env: Env, name: string, args: Row, account: Account | nul
         INSERT INTO accounts (api_key, email, tier, created_at, orders_used, quota)
         VALUES (?, ?, 'registered', datetime('now'), 0, 10)
       `).bind(key, email).run();
+      // Welcome + ops ping from placement@shortlist.io. Never block signup.
+      await scheduleMail(ctx, () => notifyAccountCreated(env, email));
       return {
         api_key: key,
         email,
@@ -472,7 +481,7 @@ async function runTool(env: Env, name: string, args: Row, account: Account | nul
 }
 
 // ---------- MCP Streamable HTTP (stateless) ----------
-async function handleMcp(req: Request, env: Env): Promise<Response> {
+async function handleMcp(req: Request, env: Env, ctx?: WaitUntil): Promise<Response> {
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'POST JSON-RPC to this endpoint (MCP Streamable HTTP)' }), {
       status: 405, headers: { 'content-type': 'application/json', allow: 'POST', ...CORS },
@@ -505,7 +514,7 @@ async function handleMcp(req: Request, env: Env): Promise<Response> {
     }
     const toolName = params?.name as string;
     const toolArgs = (params?.arguments as Row) ?? {};
-    const payload = await runTool(env, toolName, toolArgs, account);
+    const payload = await runTool(env, toolName, toolArgs, account, ctx);
 
     // Query log = the demand instrument (SPEC §15: query volume is the signal
     // that decides whether the money path gets built).
@@ -1296,7 +1305,7 @@ async function handleAdminMcp(req: Request, env: Env, tokenFromPath?: string): P
 
 // ---------- router ----------
 export default {
-  async fetch(req: Request, env: Env): Promise<Response> {
+  async fetch(req: Request, env: Env, ctx?: WaitUntil): Promise<Response> {
     const url = new URL(req.url);
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
     // www is a Custom Domain so TLS works; send browsers to the apex.
@@ -1314,7 +1323,7 @@ export default {
       return new Response(null, { status: 301, headers: { location: dest.toString(), ...CORS } });
     }
     const origin = productOrigin(url);
-    if (url.pathname === '/mcp') return handleMcp(req, env);
+    if (url.pathname === '/mcp') return handleMcp(req, env, ctx);
     if (url.pathname === '/llms.txt' || url.pathname === '/llms-full.txt') {
       return new Response(LLMS_TXT, { headers: { 'content-type': 'text/plain; charset=utf-8', ...CORS } });
     }

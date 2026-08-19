@@ -97,7 +97,7 @@ Two completely different streams. Mixing them burns concealment (§12a / §14).
 
 ### A. Buyer transactional — from shortlist.io
 
-**From:** a Shortlist mailbox (`@shortlist.io`), not `hello@placement.sh`. Reply-to: the same Shortlist address. v1 can be sent by a human (Anja/ops) from existing Google Workspace; Worker automation later uses that same From. Do not wait on Cloudflare Email Sending or a placement.sh sending domain.
+**From / Reply-To:** `placement.sh <placement@shortlist.io>`. Not `hello@placement.sh`. Do not wait on Cloudflare Email Sending or a placement.sh sending domain. The Worker sends `account.created` on `register_account` via the Gmail API (Workspace mailbox) or Resend. Mail failure never blocks signup. Remaining buyer events (`credits.added`, order mail) can still be sent by a human until those paths exist.
 
 | event | when | says | never says |
 |---|---|---|---|
@@ -257,8 +257,12 @@ Help, homepage agent panels, and `skills/placement/SKILL.md` update when step 1 
 ```
 STRIPE_SECRET_KEY           # Restricted key on Shortlist's Stripe (v1)
 STRIPE_WEBHOOK_SECRET
-EMAIL_FROM                  # @shortlist.io mailbox (not hello@placement.sh)
-GMAIL_*                     # operator drafts only; also fine for v1 human-sent buyer mail
+MAIL_FROM                   # placement@shortlist.io (wrangler.toml [vars])
+GMAIL_CLIENT_ID             # secret — Workspace OAuth for placement@shortlist.io
+GMAIL_CLIENT_SECRET         # secret
+GMAIL_REFRESH_TOKEN         # secret — authorize as placement@shortlist.io with gmail.send
+RESEND_API_KEY              # secret — fallback if Gmail is not configured; shortlist.io must be verified
+GMAIL_* (drafts)            # operator outreach drafts stay a separate mailbox/token later
 XAI_API_KEY                 # enrich script, not public MCP
 ```
 

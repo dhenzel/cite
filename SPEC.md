@@ -287,7 +287,7 @@ The gap that remains — and that Cite must own: CrowdReply's writes sit **behin
 
 **Publisher-facing copy stays quiet about the product.** Outreach is still Shortlist humans, never From placement.sh (§8). Inventory stays blind until delivery (§11). Do not market “programmatic placements at scale” at publishers.
 
-**Buyer mail From `@shortlist.io`.** Do not send buyer transactional mail from `hello@placement.sh` in v1.
+**Buyer mail From `placement@shortlist.io`.** Do not send buyer transactional mail from `hello@placement.sh`. The Worker sends the signup note on `register_account`.
 
 The 2026-08-13 “do NOT put Shortlist in the footer” line is superseded. Concealment of *inventory* is unchanged. The paying human is told who operates placement.sh.
 

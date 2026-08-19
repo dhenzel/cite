@@ -105,6 +105,7 @@ assert(r.status === 200 && (r.headers.get('content-type') ?? '').includes('text/
 assert(home.includes('Buy publisher placements') && home.includes('Claude') && home.includes('ChatGPT') && home.includes('Grok') && home.includes('Kimi') && home.includes('Cursor') && home.includes('Hermes'), 'homepage names the product and agent buttons');
 assert(home.includes('https://placement.sh/mcp') && !home.includes('workers.dev'), 'homepage shows MCP URL, not workers.dev');
 assert(home.includes('https://shortlist.io/') && home.includes('https://shortlist.io/about-us/'), 'homepage links Shortlist and the team page');
+assert(home.includes('mailto:placement@shortlist.io') && home.includes('placement@shortlist.io'), 'homepage lists buyer mail as placement@shortlist.io');
 assert(/Who runs this/.test(home) && /A <a href="https:\/\/shortlist\.io\/">Shortlist<\/a> product/.test(home) && /since 2018/.test(home), 'homepage explains Shortlist as the operator');
 assert(home.includes('data-client="hermes"') && home.includes('hermes mcp add placement --url'), 'Hermes is an add-to-agent option');
 assert(!/free listing/i.test(home), 'homepage does not talk about free listings');
@@ -602,3 +603,123 @@ r = await fs2('/admin/mcp', { method: 'POST', headers: { 'content-type': 'applic
 assert(r.status === 200, 'shared ADMIN_TOKEN still works');
 
 console.log('\nall admin-key checks passed');
+
+// ---------- buyer mail: From placement@shortlist.io on new register_account ----------
+{
+  type MailCall = { url: string; body: string };
+  const mailCalls: MailCall[] = [];
+  let gmailSendStatus = 200;
+  const prevFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url;
+    const body = typeof init?.body === 'string' ? init.body
+      : init?.body instanceof URLSearchParams ? init.body.toString() : '';
+    if (url === 'https://oauth2.googleapis.com/token') {
+      mailCalls.push({ url, body });
+      return new Response(JSON.stringify({ access_token: 'ya29.test', expires_in: 3600 }), {
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    if (url === 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send') {
+      mailCalls.push({ url, body });
+      return new Response(JSON.stringify({ id: 'msg-1' }), {
+        status: gmailSendStatus,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    if (url === 'https://api.resend.com/emails') {
+      mailCalls.push({ url, body });
+      return new Response(JSON.stringify({ id: 're-1' }), { headers: { 'content-type': 'application/json' } });
+    }
+    return prevFetch(input, init);
+  }) as typeof fetch;
+
+  const decodeRaw = (raw: string) => {
+    const pad = raw.replace(/-/g, '+').replace(/_/g, '/');
+    return Buffer.from(pad, 'base64').toString('utf8');
+  };
+  const pending: Promise<unknown>[] = [];
+  const ctx = { waitUntil(p: Promise<unknown>) { pending.push(p); } };
+  const flush = () => Promise.all(pending.splice(0));
+  const parseTool = async (res: Response) => JSON.parse((await res.json()).result.content[0].text);
+  const mailEnv: Env = {
+    ...env,
+    GMAIL_CLIENT_ID: 'gid',
+    GMAIL_CLIENT_SECRET: 'gsecret',
+    GMAIL_REFRESH_TOKEN: 'grefresh',
+    CITE_ADMIN_EMAILS: 'ops@shortlist.io',
+  };
+  const mcpCall = (email: string, e: Env = mailEnv, c = ctx) => worker.fetch(new Request('https://cite.test/mcp', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0', id: 1, method: 'tools/call',
+      params: { name: 'register_account', arguments: { email } },
+    }),
+  }), e, c);
+
+  mailCalls.length = 0;
+  let mr = await mcpCall('new-buyer@customer.test');
+  const minted = await parseTool(mr);
+  await flush();
+  assert(minted.api_key.startsWith('ck_'), 'signup still mints a key when mail is configured');
+  const gmailSends = mailCalls.filter((c) => c.url.includes('gmail.googleapis.com'));
+  const tokenCalls = mailCalls.filter((c) => c.url.includes('oauth2.googleapis.com/token'));
+  assert(tokenCalls.length >= 1, 'Gmail OAuth refresh is used');
+  // welcome + ops to placement@shortlist.io + CITE_ADMIN_EMAILS
+  assert(gmailSends.length === 3, `new signup sends buyer welcome + two ops pings (got ${gmailSends.length})`);
+  const decoded = gmailSends.map((c) => decodeRaw(JSON.parse(c.body).raw));
+  assert(decoded.every((m) => /From: "placement\.sh" <placement@shortlist\.io>/.test(m)), 'From is placement@shortlist.io');
+  assert(decoded.every((m) => /Reply-To: placement@shortlist\.io/.test(m)), 'Reply-To is placement@shortlist.io');
+  const welcome = decoded.find((m) => /To: new-buyer@customer\.test/.test(m));
+  const ops = decoded.find((m) => /To: ops@shortlist\.io/.test(m));
+  const inbox = decoded.find((m) => /To: placement@shortlist\.io/.test(m));
+  assert(!!welcome && !!ops && !!inbox, 'welcome to the buyer; ops ping to placement@shortlist.io and CITE_ADMIN_EMAILS');
+  assert(welcome!.includes('shortlist.io/about-us') && welcome!.includes('Shortlist'), 'welcome names Shortlist and the team page');
+  assert(welcome!.includes('claude mcp add') && welcome!.includes('hermes mcp add'), 'welcome shows how to add the MCP');
+  assert(!welcome!.includes(minted.api_key) && !ops!.includes(minted.api_key), 'mail never includes the API key');
+  assert(!/free listing|secret-example|hidden-blog/i.test(decoded.join('\n')), 'mail never mentions free listings or publisher domains');
+  assert(!/hello@placement\.sh/.test(decoded.join('\n')), 'mail never uses hello@placement.sh');
+
+  const sendsAfterFirst = gmailSends.length;
+  mr = await mcpCall('new-buyer@customer.test');
+  await flush();
+  const againPayload = await parseTool(mr);
+  assert(againPayload.api_key === minted.api_key, 're-register returns the same key');
+  assert(mailCalls.filter((c) => c.url.includes('gmail.googleapis.com')).length === sendsAfterFirst,
+    'existing email does not get another welcome');
+
+  gmailSendStatus = 500;
+  mailCalls.length = 0;
+  mr = await mcpCall('mail-down@customer.test');
+  const despite = await parseTool(mr);
+  await flush();
+  assert(despite.api_key.startsWith('ck_') && !despite.error, 'Gmail 500 does not fail register_account');
+
+  gmailSendStatus = 200;
+  mailCalls.length = 0;
+  const resendEnv: Env = { ...env, RESEND_API_KEY: 're_test', CITE_ADMIN_EMAILS: 'ops@shortlist.io' };
+  const resendPending: Promise<unknown>[] = [];
+  const resendCtx = { waitUntil(p: Promise<unknown>) { resendPending.push(p); } };
+  mr = await mcpCall('resend-buyer@customer.test', resendEnv, resendCtx);
+  const resendMinted = await parseTool(mr);
+  await Promise.all(resendPending);
+  assert(resendMinted.api_key.startsWith('ck_'), 'Resend path still mints a key');
+  const resendCalls = mailCalls.filter((c) => c.url === 'https://api.resend.com/emails');
+  assert(resendCalls.length === 3, `Resend sends welcome + two ops pings (got ${resendCalls.length})`);
+  const resendBodies = resendCalls.map((c) => JSON.parse(c.body));
+  assert(resendBodies.every((b: { from: string }) => b.from === '"placement.sh" <placement@shortlist.io>'),
+    'Resend From is placement@shortlist.io');
+  assert(resendBodies.every((b: { reply_to: string }) => b.reply_to === 'placement@shortlist.io'),
+    'Resend Reply-To is placement@shortlist.io');
+
+  mailCalls.length = 0;
+  mr = await mcpCall('quiet@customer.test', env, ctx);
+  await flush();
+  const quiet = await parseTool(mr);
+  assert(quiet.api_key.startsWith('ck_'), 'signup works with no mail secrets');
+  assert(mailCalls.length === 0, 'no mail HTTP when neither Gmail nor Resend is configured');
+
+  globalThis.fetch = prevFetch;
+  console.log('\nall signup-mail checks passed');
+}

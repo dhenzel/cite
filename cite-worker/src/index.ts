@@ -72,13 +72,29 @@ const json = (payload: unknown, status = 200) =>
   new Response(JSON.stringify(payload), { status, headers: { 'content-type': 'application/json', ...CORS } });
 
 // ---------- public field whitelist (blind placements) ----------
-// Metrics (2026-08-19): buyer surface is Ahrefs-only. Exact Domain Rating —
-// permitted by Ahrefs' API rules when shown to the end user, attributed, and
-// not renamed. Organic traffic stays a band (exact traffic uniquely IDs a
-// site). Moz DA / Majestic TF/CF never leave the buyer MCP — those were the
-// fingerprinting combo (DR+DA+TF+CF+niche = 93.6% of the catalog; DR+niche
-// = 2.9%). Legacy da/tf/cf columns may still sit in D1 for operators.
+// Metrics (2026-08-19): buyer surface is Ahrefs-only. David: show every
+// Ahrefs overview stat, with Ahrefs' names, attributed, never renamed.
+// Organic traffic is the exact Ahrefs number (not a band). Moz DA /
+// Majestic TF/CF never leave the buyer MCP. Legacy da/tf/cf may still
+// sit in D1 for operators. Domain stays hidden until delivery.
 type Row = Record<string, unknown>;
+
+const finiteNum = (v: unknown): number | undefined =>
+  typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+
+/** Ahrefs Site Explorer overview stats. Empty values are omitted. */
+const ahrefsOverview = (r: Row): Row => {
+  const stats: Row = {
+    domain_rating: finiteNum(r.dr),
+    organic_traffic: finiteNum(r.traffic),
+    organic_keywords: finiteNum(r.ahrefs_organic_keywords),
+    referring_domains: finiteNum(r.ahrefs_referring_domains),
+    backlinks: finiteNum(r.ahrefs_backlinks),
+    ahrefs_rank: finiteNum(r.ahrefs_rank),
+    organic_value: finiteNum(r.ahrefs_organic_value),
+  };
+  return Object.fromEntries(Object.entries(stats).filter(([, v]) => v !== undefined));
+};
 
 const scoreComponents = (r: Row) => ({
   authority: typeof r.dr === 'number' ? Math.round(r.dr) : undefined,
@@ -105,7 +121,9 @@ const pub = (r: Row, detail = false) => {
     niche: r.niche,
     subniche: r.subniche || undefined,
     // Ahrefs requires the metric keep its name and carry attribution.
-    ahrefs_domain_rating: r.dr ?? undefined,
+    ahrefs: Object.keys(ahrefsOverview(r)).length ? ahrefsOverview(r) : undefined,
+    ahrefs_domain_rating: finiteNum(r.dr),
+    ahrefs_organic_traffic: finiteNum(r.traffic),
     traffic_band: r.traffic_band,
     listed_price: r.listed_price,
     link_attribute: r.link_attribute ?? 'unknown',
@@ -121,7 +139,7 @@ const pub = (r: Row, detail = false) => {
     how_this_works: 'Paid placement fulfilled by placement.sh. Prepaid credits required to book.',
     content_summary: r.summary ?? undefined,
     recent_post_titles: r.recent_titles ? JSON.parse(r.recent_titles as string) : undefined,
-    metrics_attribution: 'Domain Rating (DR) via Ahrefs. Organic traffic shown as a band. Moz DA and Majestic TF/CF are not shown to buyers.',
+    metrics_attribution: 'Ahrefs Site Explorer overview: Domain Rating, organic traffic, organic keywords, referring domains, backlinks, Ahrefs Rank, organic value — official names, when we have them. Moz DA and Majestic TF/CF are not shown to buyers.',
     note: 'Publisher domain is revealed as published_url when the placement is delivered (blind placements).',
   };
 };
@@ -354,7 +372,7 @@ async function runTool(env: Env, name: string, args: Row, account: Account | nul
         offset,
         next_offset,
         looking: 'unlimited',
-        note: 'Handles are anonymized. Domains are revealed only at delivery. Looking is unlimited and needs no account — page with offset to see the rest. Use this to figure out what the human could write about. Buy on placement_score, Ahrefs DR, topics, traffic_band, link_attribute and price.',
+        note: 'Handles are anonymized. Domains are revealed only at delivery. Looking is unlimited and needs no account — page with offset to see the rest. Use this to figure out what the human could write about. Buy on placement_score, Ahrefs stats (Domain Rating, organic traffic, …), topics, link_attribute and price.',
         next_step: next_offset !== null
           ? `More matches remain. Call search_publishers again with offset ${next_offset} (and the same filters). Keep browsing until the human knows what they want. Account and payment are only for booking.`
           : account
@@ -1353,13 +1371,18 @@ const adminTools = [
   },
   {
     name: 'admin_update_metrics',
-    description: 'Push refreshed SEO metrics for a publisher (dr, traffic, spam; optional legacy da/tf/cf) and recompute its Placement Score and traffic band. Going forward, refresh from Ahrefs.',
+    description: 'Push refreshed Ahrefs overview stats for a publisher (domain_rating/dr, organic_traffic/traffic, organic_keywords, referring_domains, backlinks, ahrefs_rank, organic_value, spam) and recompute Placement Score and traffic band. Optional legacy da/tf/cf are stored for operators only.',
     inputSchema: {
       type: 'object',
       properties: {
         site_id: { type: 'string' }, domain: { type: 'string' },
-        dr: { type: 'number' }, da: { type: 'number' }, tf: { type: 'number' },
-        cf: { type: 'number' }, traffic: { type: 'number' }, spam: { type: 'number' },
+        dr: { type: 'number' }, domain_rating: { type: 'number' },
+        traffic: { type: 'number' }, organic_traffic: { type: 'number' },
+        organic_keywords: { type: 'number' }, referring_domains: { type: 'number' },
+        backlinks: { type: 'number' }, ahrefs_rank: { type: 'number' },
+        organic_value: { type: 'number' },
+        da: { type: 'number' }, tf: { type: 'number' },
+        cf: { type: 'number' }, spam: { type: 'number' },
       },
     },
   },
@@ -1503,13 +1526,23 @@ async function runAdminTool(env: Env, req: Request, name: string, args: Row): Pr
     case 'admin_update_metrics': {
       const site = await resolveSite(env, args);
       if (!site) return { error: 'SITE_NOT_FOUND', hint: 'Pass site_id or domain.' };
+      const numArg = (...keys: string[]): number | undefined => {
+        for (const k of keys) if (typeof args[k] === 'number') return args[k] as number;
+        return undefined;
+      };
+      const keep = (v: unknown): number | null => (typeof v === 'number' ? v : null);
       const m = {
-        dr: typeof args.dr === 'number' ? args.dr : (site.dr as number | null),
-        da: typeof args.da === 'number' ? args.da : (site.da as number | null),
-        tf: typeof args.tf === 'number' ? args.tf : (site.tf as number | null),
-        cf: typeof args.cf === 'number' ? args.cf : (site.cf as number | null),
-        traffic: typeof args.traffic === 'number' ? args.traffic : (site.traffic as number | null),
-        spam: typeof args.spam === 'number' ? args.spam : (site.spam as number | null),
+        dr: numArg('dr', 'domain_rating') ?? keep(site.dr),
+        da: numArg('da') ?? keep(site.da),
+        tf: numArg('tf') ?? keep(site.tf),
+        cf: numArg('cf') ?? keep(site.cf),
+        traffic: numArg('traffic', 'organic_traffic') ?? keep(site.traffic),
+        spam: numArg('spam') ?? keep(site.spam),
+        ahrefs_organic_keywords: numArg('organic_keywords') ?? keep(site.ahrefs_organic_keywords),
+        ahrefs_referring_domains: numArg('referring_domains') ?? keep(site.ahrefs_referring_domains),
+        ahrefs_backlinks: numArg('backlinks') ?? keep(site.ahrefs_backlinks),
+        ahrefs_rank: numArg('ahrefs_rank') ?? keep(site.ahrefs_rank),
+        ahrefs_organic_value: numArg('organic_value') ?? keep(site.ahrefs_organic_value),
       };
       // Sheet-era weights (DA + TF/CF). Re-fit to Ahrefs-only when metrics refresh.
       const trafficPts = Math.min(100, 20 * Math.log10((m.traffic ?? 0) + 1));
@@ -1522,9 +1555,15 @@ async function runAdminTool(env: Env, req: Request, name: string, args: Row): Pr
         : t < 10_000 ? '5k–10k/mo' : t < 50_000 ? '10k–50k/mo' : t < 250_000 ? '50k–250k/mo' : '250k+/mo';
       await env.DB.prepare(`
         UPDATE sites SET dr=?, da=?, tf=?, cf=?, traffic=?, spam=?, traffic_band=?, cite_score=?,
+                         ahrefs_organic_keywords=?, ahrefs_referring_domains=?, ahrefs_backlinks=?,
+                         ahrefs_rank=?, ahrefs_organic_value=?,
                          metrics_updated_at=date('now'), updated_at=datetime('now')
         WHERE id = ?
-      `).bind(m.dr, m.da, m.tf, m.cf, m.traffic, m.spam, band, score, site.id).run();
+      `).bind(
+        m.dr, m.da, m.tf, m.cf, m.traffic, m.spam, band, score,
+        m.ahrefs_organic_keywords, m.ahrefs_referring_domains, m.ahrefs_backlinks,
+        m.ahrefs_rank, m.ahrefs_organic_value, site.id,
+      ).run();
       return { updated: true, site_id: site.id, domain: site.domain, metrics: m, traffic_band: band, cite_score: score };
     }
 

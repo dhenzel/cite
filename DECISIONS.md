@@ -185,9 +185,27 @@ David: we will only use Ahrefs.
 
 **Decision:** the public metric is **Ahrefs Domain Rating**, attributed, never renamed. Organic traffic stays a **band** (exact Ahrefs traffic uniquely identifies a site). Moz DA and Majestic TrustFlow / CitationFlow are not shown on the buyer MCP and will not be refreshed as ranking inputs.
 
-Fingerprinting consequence: the combo that reconstructed the catalog was exact DR+DA+TF+CF (93.6%). DR+niche is 2.9%. Querying a lot still cannot turn the anonymized catalog into a domain list from Ahrefs DR alone.
+**Superseded later the same day:** David: we can show all the stats Ahrefs shows. Exact Ahrefs organic traffic (and the rest of the Site Explorer overview) is now buyer-visible. See below.
 
-Not in this cut: D1 still has `da` / `tf` / `cf` from the sheet (operator console can see them). Placement Score still has leftover DA/TF weights until scores are recomputed from Ahrefs-only inputs.
+Fingerprinting consequence of the earlier cut: the combo that reconstructed the catalog was exact DR+DA+TF+CF (93.6%). DR+niche is 2.9%.
+
+Not in the morning cut: D1 still has `da` / `tf` / `cf` from the sheet (operator console can see them). Placement Score still has leftover DA/TF weights until scores are recomputed from Ahrefs-only inputs.
+
+## 2026-08-19 — show every Ahrefs overview stat
+
+David: we can show all the stats Ahrefs shows.
+
+**Decision:** the buyer MCP publishes the Ahrefs Site Explorer overview, using Ahrefs' names, attributed, never renamed:
+
+- Domain Rating
+- organic traffic (**exact**, not a band)
+- organic keywords, referring domains, backlinks, Ahrefs Rank, organic value — when the row has them
+
+`traffic_band` stays as a search convenience. Moz DA and Majestic TF/CF stay off the buyer surface.
+
+What we have in D1 today: DR + organic traffic from the sheet. The extra overview columns are nullable until an Ahrefs refresh fills them. Domain is still hidden until delivery.
+
+Exact organic traffic uniquely identifies a site in Ahrefs. That is accepted: we are showing the same numbers Ahrefs shows an end user, not a Moz/Majestic fingerprinting combo.
 
 ## Still open
 

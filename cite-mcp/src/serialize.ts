@@ -23,12 +23,32 @@ export interface SiteRow {
   [key: string]: unknown;
 }
 
+const finiteNum = (v: unknown): number | undefined =>
+  typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+
+const ahrefsOverview = (row: SiteRow) => {
+  const stats = {
+    domain_rating: finiteNum(row.dr),
+    organic_traffic: finiteNum(row.traffic),
+    organic_keywords: finiteNum(row.ahrefs_organic_keywords),
+    referring_domains: finiteNum(row.ahrefs_referring_domains),
+    backlinks: finiteNum(row.ahrefs_backlinks),
+    ahrefs_rank: finiteNum(row.ahrefs_rank),
+    organic_value: finiteNum(row.ahrefs_organic_value),
+  };
+  return Object.fromEntries(Object.entries(stats).filter(([, v]) => v !== undefined));
+};
+
 export function publicSite(row: SiteRow, detail = false) {
+  const ahrefs = ahrefsOverview(row);
   const base = {
     publisher_id: row.id,
     placement_score: row.cite_score,
     niche: row.niche,
     subniche: row.subniche || undefined,
+    ahrefs: Object.keys(ahrefs).length ? ahrefs : undefined,
+    ahrefs_domain_rating: finiteNum(row.dr),
+    ahrefs_organic_traffic: finiteNum(row.traffic),
     traffic_band: row.traffic_band,
     listed_price: row.listed_price,
     link_attribute: row.link_attribute ?? 'unknown',
@@ -46,6 +66,7 @@ export function publicSite(row: SiteRow, detail = false) {
     turnaround_sla_days: row.turnaround_sla_days ?? 'unknown',
     content_summary: row.summary ?? undefined,
     recent_post_titles: row.recent_titles ? (JSON.parse(row.recent_titles) as string[]) : undefined,
+    metrics_attribution: 'Ahrefs Site Explorer overview: Domain Rating, organic traffic, organic keywords, referring domains, backlinks, Ahrefs Rank, organic value — official names, when we have them. Moz DA and Majestic TF/CF are not shown to buyers.',
     note: 'Domain is revealed as published_url when the placement is delivered (blind placements).',
   };
 }

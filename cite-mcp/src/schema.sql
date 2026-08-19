@@ -18,6 +18,11 @@ CREATE TABLE IF NOT EXISTS sites (
   da REAL, dr REAL, tf REAL, cf REAL, spam REAL,
   traffic REAL,
   traffic_band TEXT,
+  ahrefs_organic_keywords REAL,
+  ahrefs_referring_domains REAL,
+  ahrefs_backlinks REAL,
+  ahrefs_rank REAL,
+  ahrefs_organic_value REAL,
   cite_score INTEGER,
   link_attribute TEXT DEFAULT 'unknown',   -- dofollow|sponsored|ugc|nofollow|unknown — Shortlist team to backfill
   max_links_per_post INTEGER,              -- NULL = unknown — Shortlist team to backfill

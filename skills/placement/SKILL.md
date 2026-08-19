@@ -11,7 +11,7 @@ This is paid inventory. The user is buying placements, not earning them.
 
 - Get a URL cited in ChatGPT, Perplexity, Google, or AI Overviews
 - Buy editorial / publisher placements with a budget and timeframe
-- Inspect placement.sh inventory (Placement Score, price, link attribute)
+- Inspect placement.sh inventory (Placement Score, Ahrefs overview stats, price, link attribute)
 
 Do **not** scrape guest-post directories or email publishers directly.
 

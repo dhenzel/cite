@@ -5,7 +5,7 @@
 import { chromium } from 'playwright-core';
 import { ADMIN_HTML } from '../src/admin-ui.js';
 const html = ADMIN_HTML;
-const sites = [{ id: 'cs_1', domain: 'a.com', niche: 'Business', cite_score: 70, dr: 60, da: 50,
+const sites = [{ id: 'cs_1', domain: 'a.com', niche: 'Business', cite_score: 70, dr: 60, traffic: 4200,
   traffic_band: '1k–5k/mo', seller_price: 100, markup: 1.6, listed_price: 160, margin: 60,
   link_attribute: 'unknown', max_links_per_post: null, status: 'active', cost_type: 'paid',
   acquisition_mode: 'paid_placement' }];

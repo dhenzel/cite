@@ -185,7 +185,7 @@ export const ADMIN_HTML = `<!doctype html>
   <div style="overflow-x:auto">
   <table>
     <thead><tr>
-      <th>Domain</th><th>Niche</th><th class="num">Score</th><th class="num">DR</th><th class="num">DA</th><th>Traffic</th>
+      <th>Domain</th><th>Niche</th><th class="num">Score</th><th class="num">DR</th><th class="num">Org traffic</th>
       <th class="num">Seller $</th><th class="num">Markup</th><th class="num">Listed $</th><th class="num">Margin $</th>
       <th>Acquisition</th><th>Link attr</th><th class="num">Max links</th><th>Status</th>
     </tr></thead>
@@ -551,7 +551,7 @@ async function load(p) {
   const niches = new Set([...$('fniche').options].map(o => o.value));
   $('rows').innerHTML = (d.sites && d.sites.length)
     ? d.sites.map(rowHtml).join('')
-    : '<tr><td colspan="14" class="empty">No sites match these filters. '
+    : '<tr><td colspan="13" class="empty">No sites match these filters. '
       + '<button class="copy" onclick="resetFilters()">Reset filters</button></td></tr>';
   d.sites.forEach(s => { if (s.niche && !niches.has(s.niche)) { const o = document.createElement('option'); o.textContent = s.niche; $('fniche').appendChild(o); niches.add(s.niche); } });
 }
@@ -567,8 +567,7 @@ function rowHtml(s) {
     '<td>' + esc(s.niche ?? '–') + (s.subniche ? '<div class="sub">' + esc(s.subniche) + '</div>' : '') + '</td>' +
     '<td class="num">' + (s.cite_score ?? '–') + '</td>' +
     '<td class="num">' + (s.dr ?? '–') + '</td>' +
-    '<td class="num">' + (s.da ?? '–') + '</td>' +
-    '<td>' + esc(s.traffic_band ?? '–') + '</td>' +
+    '<td class="num">' + (s.traffic ?? '–') + '</td>' +
     '<td class="num"><input type="number" data-field="seller_price" data-kind="float" value="' + (s.seller_price ?? '') + '"></td>' +
     '<td class="num"><input type="number" step="0.1" data-field="markup" data-kind="float" value="' + (s.markup ?? 1.6) + '"></td>' +
     '<td class="num" data-col="listed">' + (s.listed_price != null ? '$' + s.listed_price : '–') + '</td>' +

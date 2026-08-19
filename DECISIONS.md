@@ -201,9 +201,9 @@ David: we can show all the stats Ahrefs shows.
 - organic traffic (**exact**, not a band)
 - organic keywords, referring domains, backlinks, Ahrefs Rank, organic value — when the row has them
 
-`traffic_band` stays as a search convenience. Moz DA and Majestic TF/CF stay off the buyer surface.
+`traffic_band` stays as a search convenience. Moz DA and Majestic TF/CF stay off every surface (buyer MCP, operator console, admin MCP). Leftover sheet DA/TF may still sit in D1 and feed Placement Score internally until we re-fit; they are never returned.
 
-What we have in D1 today: DR + organic traffic from the sheet. The extra overview columns are nullable until an Ahrefs refresh fills them. Domain is still hidden until delivery.
+What we have in D1 today: DR + organic traffic from the sheet. The extra overview columns are nullable until an Ahrefs refresh fills them. Domain is still hidden from buyers until delivery.
 
 Exact organic traffic uniquely identifies a site in Ahrefs. That is accepted: we are showing the same numbers Ahrefs shows an end user, not a Moz/Majestic fingerprinting combo.
 

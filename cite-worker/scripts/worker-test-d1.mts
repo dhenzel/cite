@@ -53,6 +53,7 @@ const auth = { authorization: 'Bearer test-token-123', 'content-type': 'applicat
 r = await f('/admin/api/sites?q=secret', { headers: auth });
 let d = await r.json();
 assert(d.total === 1 && d.sites[0].domain === 'secret-example.com' && d.sites[0].margin === 60, 'admin list returns private fields + margin');
+assert(!('da' in d.sites[0]) && !('tf' in d.sites[0]) && !('cf' in d.sites[0]), 'admin list omits Moz/Majestic');
 
 // markup edit → listed price recompute (100 × 2.0 = 200)
 r = await f('/admin/api/sites/cs_aaa111bbb222', { method: 'PATCH', headers: auth, body: JSON.stringify({ markup: 2.0 }) });
@@ -260,6 +261,9 @@ assert(r.status === 200 && (await r.json()).result.tools.length === 6, 'admin MC
 
 let ad = await adminCall('admin_search_sites', { q: 'secret' });
 assert(ad.sites[0].domain === 'secret-example.com' && ad.sites[0].seller_price === 80, 'admin MCP returns private fields');
+assert(!('da' in ad.sites[0]) && !('tf' in ad.sites[0]) && !('cf' in ad.sites[0]),
+  'admin MCP does not show Moz DA / Majestic TF/CF');
+assert(ad.sites[0].dr === 88 && ad.sites[0].traffic === 25000, 'admin MCP shows Ahrefs DR and organic traffic');
 ad = await adminCall('admin_update_site', { domain: 'secret-example.com', fields: { markup: 3 } });
 assert(ad.listed_price === 240, `admin_update_site recomputes listed price (got ${ad.listed_price})`);
 ad = await adminCall('admin_update_site', { domain: 'secret-example.com', fields: { evil_column: 1 } });
@@ -275,6 +279,8 @@ ad = await adminCall('admin_update_metrics', {
   organic_keywords: 9000, referring_domains: 2100, backlinks: 80000, ahrefs_rank: 12000, organic_value: 45000,
 });
 assert(ad.cite_score > 0 && ad.traffic_band === '250k+/mo', 'admin_update_metrics recomputes score and band');
+assert(!ad.metrics || (!('da' in ad.metrics) && !('tf' in ad.metrics) && !('cf' in ad.metrics)),
+  'admin_update_metrics does not return Moz/Majestic');
 g = await call('get_publisher', { publisher_id: 'cs_aaa111bbb222' });
 assert(g.ahrefs?.organic_keywords === 9000 && g.ahrefs?.ahrefs_rank === 12000, 'admin Ahrefs overview refresh reaches the buyer payload');
 ad = await adminCall('admin_add_site', { domain: 'brand-new.test', niche: 'Pets', seller_price: 40, markup: 2.5 });

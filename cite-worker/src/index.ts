@@ -72,11 +72,12 @@ const json = (payload: unknown, status = 200) =>
   new Response(JSON.stringify(payload), { status, headers: { 'content-type': 'application/json', ...CORS } });
 
 // ---------- public field whitelist (blind placements) ----------
-// Metrics (2026-08-19): buyer surface is Ahrefs-only. David: show every
-// Ahrefs overview stat, with Ahrefs' names, attributed, never renamed.
-// Organic traffic is the exact Ahrefs number (not a band). Moz DA /
-// Majestic TF/CF never leave the buyer MCP. Legacy da/tf/cf may still
-// sit in D1 for operators. Domain stays hidden until delivery.
+// Metrics (2026-08-19): Ahrefs-only on every surface — buyer MCP and
+// operator console/admin MCP. David: show every Ahrefs overview stat,
+// with Ahrefs' names, attributed, never renamed. Organic traffic is the
+// exact Ahrefs number (not a band). Moz DA / Majestic TF/CF are not
+// shown anywhere; legacy da/tf/cf columns may still sit in D1. Domain
+// stays hidden from buyers until delivery.
 type Row = Record<string, unknown>;
 
 const finiteNum = (v: unknown): number | undefined =>
@@ -95,6 +96,15 @@ const ahrefsOverview = (r: Row): Row => {
   };
   return Object.fromEntries(Object.entries(stats).filter(([, v]) => v !== undefined));
 };
+
+/** Operator payloads: drop Moz/Majestic even if the D1 row still has them. */
+const operatorSite = (r: Row): Row => {
+  const { da: _da, tf: _tf, cf: _cf, ...rest } = r;
+  const ahrefs = ahrefsOverview(r);
+  if (Object.keys(ahrefs).length) rest.ahrefs = ahrefs;
+  return rest;
+};
+const operatorSites = (rows: Row[]): Row[] => rows.map(operatorSite);
 
 const scoreComponents = (r: Row) => ({
   authority: typeof r.dr === 'number' ? Math.round(r.dr) : undefined,
@@ -139,7 +149,7 @@ const pub = (r: Row, detail = false) => {
     how_this_works: 'Paid placement fulfilled by placement.sh. Prepaid credits required to book.',
     content_summary: r.summary ?? undefined,
     recent_post_titles: r.recent_titles ? JSON.parse(r.recent_titles as string) : undefined,
-    metrics_attribution: 'Ahrefs Site Explorer overview: Domain Rating, organic traffic, organic keywords, referring domains, backlinks, Ahrefs Rank, organic value — official names, when we have them. Moz DA and Majestic TF/CF are not shown to buyers.',
+    metrics_attribution: 'Ahrefs Site Explorer overview: Domain Rating, organic traffic, organic keywords, referring domains, backlinks, Ahrefs Rank, organic value — official names, when we have them. Moz DA and Majestic TF/CF are not shown.',
     note: 'Publisher domain is revealed as published_url when the placement is delivered (blind placements).',
   };
 };
@@ -1100,7 +1110,9 @@ async function handleAdminApi(req: Request, env: Env, path: string): Promise<Res
     const rows = (await env.DB.prepare(`
       SELECT id, domain, niche, subniche, cite_score, traffic_band, seller_price, markup, listed_price,
              link_attribute, max_links_per_post, turnaround_sla_days, status, contact_email, note,
-             dr, da, tf, cf, traffic, COALESCE(cost_type,'paid') AS cost_type,
+             dr, traffic, ahrefs_organic_keywords, ahrefs_referring_domains, ahrefs_backlinks,
+             ahrefs_rank, ahrefs_organic_value,
+             COALESCE(cost_type,'paid') AS cost_type,
              COALESCE(acquisition_mode,'paid_placement') AS acquisition_mode,
              requires_reciprocal_link, agent_instructions
       FROM sites WHERE ${where}
@@ -1110,7 +1122,7 @@ async function handleAdminApi(req: Request, env: Env, path: string): Promise<Res
       r.margin = r.listed_price != null && r.seller_price != null
         ? Math.round(((r.listed_price as number) - (r.seller_price as number)) * 100) / 100 : null;
     }
-    return json({ total: total.n, page, per_page: per, sites: rows });
+    return json({ total: total.n, page, per_page: per, sites: operatorSites(rows) });
   }
 
   const patchMatch = path.match(/^\/admin\/api\/sites\/(cs_[a-z0-9]+)$/);
@@ -1142,7 +1154,7 @@ async function handleAdminApi(req: Request, env: Env, path: string): Promise<Res
     `).bind(id).run();
     const row = await env.DB.prepare(`SELECT * FROM sites WHERE id = ?`).bind(id).first();
     if (!row) return json({ error: 'SITE_NOT_FOUND', id }, 404);
-    return json({ ok: true, site: row });
+    return json({ ok: true, site: operatorSite(row as Row) });
   }
 
   if (path === '/admin/api/sites' && req.method === 'POST') {
@@ -1371,7 +1383,7 @@ const adminTools = [
   },
   {
     name: 'admin_update_metrics',
-    description: 'Push refreshed Ahrefs overview stats for a publisher (domain_rating/dr, organic_traffic/traffic, organic_keywords, referring_domains, backlinks, ahrefs_rank, organic_value, spam) and recompute Placement Score and traffic band. Optional legacy da/tf/cf are stored for operators only.',
+    description: 'Push refreshed Ahrefs overview stats for a publisher (domain_rating/dr, organic_traffic/traffic, organic_keywords, referring_domains, backlinks, ahrefs_rank, organic_value, spam) and recompute Placement Score and traffic band. Moz DA and Majestic TF/CF are not accepted or returned.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1380,9 +1392,7 @@ const adminTools = [
         traffic: { type: 'number' }, organic_traffic: { type: 'number' },
         organic_keywords: { type: 'number' }, referring_domains: { type: 'number' },
         backlinks: { type: 'number' }, ahrefs_rank: { type: 'number' },
-        organic_value: { type: 'number' },
-        da: { type: 'number' }, tf: { type: 'number' },
-        cf: { type: 'number' }, spam: { type: 'number' },
+        organic_value: { type: 'number' }, spam: { type: 'number' },
       },
     },
   },
@@ -1456,7 +1466,9 @@ async function runAdminTool(env: Env, req: Request, name: string, args: Row): Pr
       const { where, params } = buildFilter(args);
       const limit = Math.min((args.limit as number | undefined) ?? 50, 200);
       const rows = (await env.DB.prepare(`
-        SELECT id, domain, niche, subniche, cite_score, dr, da, tf, cf, traffic, traffic_band,
+        SELECT id, domain, niche, subniche, cite_score, dr, traffic, traffic_band,
+               ahrefs_organic_keywords, ahrefs_referring_domains, ahrefs_backlinks,
+               ahrefs_rank, ahrefs_organic_value,
                seller_price, markup, listed_price, link_attribute, max_links_per_post,
                turnaround_sla_days, status, COALESCE(cost_type,'paid') AS cost_type,
                COALESCE(acquisition_mode,'paid_placement') AS acquisition_mode,
@@ -1468,7 +1480,7 @@ async function runAdminTool(env: Env, req: Request, name: string, args: Row): Pr
         r.margin = r.listed_price != null && r.seller_price != null
           ? Math.round(((r.listed_price as number) - (r.seller_price as number)) * 100) / 100 : null;
       }
-      return { matched: total.n, returned: rows.length, sites: rows };
+      return { matched: total.n, returned: rows.length, sites: operatorSites(rows) };
     }
 
     case 'admin_update_site': {
@@ -1533,9 +1545,6 @@ async function runAdminTool(env: Env, req: Request, name: string, args: Row): Pr
       const keep = (v: unknown): number | null => (typeof v === 'number' ? v : null);
       const m = {
         dr: numArg('dr', 'domain_rating') ?? keep(site.dr),
-        da: numArg('da') ?? keep(site.da),
-        tf: numArg('tf') ?? keep(site.tf),
-        cf: numArg('cf') ?? keep(site.cf),
         traffic: numArg('traffic', 'organic_traffic') ?? keep(site.traffic),
         spam: numArg('spam') ?? keep(site.spam),
         ahrefs_organic_keywords: numArg('organic_keywords') ?? keep(site.ahrefs_organic_keywords),
@@ -1544,27 +1553,34 @@ async function runAdminTool(env: Env, req: Request, name: string, args: Row): Pr
         ahrefs_rank: numArg('ahrefs_rank') ?? keep(site.ahrefs_rank),
         ahrefs_organic_value: numArg('organic_value') ?? keep(site.ahrefs_organic_value),
       };
-      // Sheet-era weights (DA + TF/CF). Re-fit to Ahrefs-only when metrics refresh.
+      // Score still uses leftover sheet DA/TF if present so refreshing Ahrefs
+      // fields does not reshuffle the catalog. Those values are never returned.
+      const da = keep(site.da);
+      const tf = keep(site.tf);
+      const cf = keep(site.cf);
       const trafficPts = Math.min(100, 20 * Math.log10((m.traffic ?? 0) + 1));
-      const ratio = m.cf && m.cf > 0 ? Math.min(1, (m.tf ?? 0) / m.cf) : 0;
+      const ratio = cf && cf > 0 ? Math.min(1, (tf ?? 0) / cf) : 0;
       const score = Math.max(0, Math.min(100, Math.round(
-        0.4 * (m.dr ?? 0) + 0.2 * (m.da ?? 0) + 0.3 * trafficPts + 0.1 * (100 * ratio) - 8 * (m.spam ?? 0),
+        0.4 * (m.dr ?? 0) + 0.2 * (da ?? 0) + 0.3 * trafficPts + 0.1 * (100 * ratio) - 8 * (m.spam ?? 0),
       )));
       const t = m.traffic ?? 0;
       const band = t < 500 ? '<500/mo' : t < 1_000 ? '500–1k/mo' : t < 5_000 ? '1k–5k/mo'
         : t < 10_000 ? '5k–10k/mo' : t < 50_000 ? '10k–50k/mo' : t < 250_000 ? '50k–250k/mo' : '250k+/mo';
       await env.DB.prepare(`
-        UPDATE sites SET dr=?, da=?, tf=?, cf=?, traffic=?, spam=?, traffic_band=?, cite_score=?,
+        UPDATE sites SET dr=?, traffic=?, spam=?, traffic_band=?, cite_score=?,
                          ahrefs_organic_keywords=?, ahrefs_referring_domains=?, ahrefs_backlinks=?,
                          ahrefs_rank=?, ahrefs_organic_value=?,
                          metrics_updated_at=date('now'), updated_at=datetime('now')
         WHERE id = ?
       `).bind(
-        m.dr, m.da, m.tf, m.cf, m.traffic, m.spam, band, score,
+        m.dr, m.traffic, m.spam, band, score,
         m.ahrefs_organic_keywords, m.ahrefs_referring_domains, m.ahrefs_backlinks,
         m.ahrefs_rank, m.ahrefs_organic_value, site.id,
       ).run();
-      return { updated: true, site_id: site.id, domain: site.domain, metrics: m, traffic_band: band, cite_score: score };
+      return {
+        updated: true, site_id: site.id, domain: site.domain,
+        metrics: operatorSite(m), traffic_band: band, cite_score: score,
+      };
     }
 
     case 'admin_add_site': {

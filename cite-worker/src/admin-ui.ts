@@ -14,24 +14,23 @@ export function signInPage(opts: { error?: string; configured?: boolean; tokenFa
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  /* Shortlist.io tokens: navy #17204B, mint #30D2AD / #39D6B4, cyan #00AADD. */
-  :root { --bg:#F7F8FB; --surface:#fff; --ink:#17204B; --muted:#6e7aa4; --line:#e6e9ec;
-          --accent:#30D2AD; --accent-2:#39D6B4; --accent-ink:#17204B; --cyan:#00AADD;
-          --bad:#c0453a; --bad-soft:rgba(192,69,58,.08); }
+  /* shortlist.io: navy #17204B, mint #30D2AD / #39D6B4, cyan #00AADD, Inter. */
+  :root { --navy:#17204B; --mint:#30D2AD; --mint-2:#39D6B4; --cyan:#00AADD;
+          --ink:#17204B; --muted:#6e7aa4; --line:#e6e9ec; --bad:#c0453a; }
   * { box-sizing:border-box; }
-  body { margin:0; min-height:100vh; display:grid; place-items:center; background:var(--bg); color:var(--ink);
+  body { margin:0; min-height:100vh; display:grid; place-items:center; background:var(--navy); color:#fff;
          font:15px/1.6 Inter,system-ui,-apple-system,"Segoe UI",sans-serif; padding:24px; }
-  .box { background:var(--surface); border:1px solid var(--line); border-radius:14px;
-         padding:34px 34px 30px; max-width:430px; width:100%; box-shadow:0 10px 30px rgba(23,32,75,.06); }
-  .brand { margin:0 0 14px; font-size:12px; font-weight:600; letter-spacing:.08em; text-transform:uppercase;
-           color:var(--cyan); }
-  h1 { margin:0 0 6px; font-size:23px; letter-spacing:-.02em; color:var(--ink); }
+  .logo { margin:0 0 28px; text-align:center; font-weight:700; font-size:28px; letter-spacing:-.04em; color:#fff; }
+  .logo span { color:var(--mint); }
+  .box { background:#fff; color:var(--ink); border-radius:16px;
+         padding:34px 34px 30px; max-width:430px; width:100%; box-shadow:0 18px 50px rgba(0,0,0,.25); }
+  h1 { margin:0 0 6px; font-size:22px; letter-spacing:-.02em; color:var(--ink); }
   .sub { color:var(--muted); margin:0 0 24px; font-size:14.5px; }
-  a.btn { display:block; text-align:center; background:var(--accent); color:var(--accent-ink);
-          text-decoration:none; font-weight:650; padding:13px 18px; border-radius:9px; font-size:15.5px; }
-  a.btn:hover { background:var(--accent-2); }
-  a.btn:focus-visible { outline:2px solid var(--ink); outline-offset:2px; }
-  .err { background:var(--bad-soft); border-left:3px solid var(--bad); color:var(--ink);
+  a.btn { display:block; text-align:center; background:var(--mint); color:var(--navy);
+          text-decoration:none; font-weight:700; padding:13px 18px; border-radius:9px; font-size:15.5px; }
+  a.btn:hover { background:var(--mint-2); }
+  a.btn:focus-visible { outline:2px solid var(--navy); outline-offset:2px; }
+  .err { background:rgba(192,69,58,.08); border-left:3px solid var(--bad); color:var(--ink);
          padding:12px 14px; border-radius:0 8px 8px 0; margin:0 0 20px; font-size:14px; }
   .foot { color:var(--muted); font-size:12.5px; margin:20px 0 0; }
   .foot a { color:var(--cyan); }
@@ -40,14 +39,15 @@ export function signInPage(opts: { error?: string; configured?: boolean; tokenFa
   .fallback summary { cursor:pointer; color:var(--muted); font-size:13.5px; }
   .fallback form { display:flex; gap:8px; margin-top:12px; }
   .fallback input { flex:1; min-width:0; padding:9px 11px; border-radius:8px; border:1px solid var(--line);
-                    background:var(--bg); color:var(--ink); font:inherit; }
+                    background:#F7F8FB; color:var(--ink); font:inherit; }
   .fallback button { padding:9px 14px; border-radius:8px; border:1px solid var(--line);
-                     background:var(--bg); color:var(--ink); font:inherit; cursor:pointer; }
+                     background:#F7F8FB; color:var(--ink); font:inherit; cursor:pointer; }
 </style>
 </head>
 <body>
+  <div>
+    <p class="logo">shortlist<span>.</span></p>
   <div class="box">
-    <p class="brand">Shortlist</p>
     <h1>placement.sh operator console</h1>
     <p class="sub">Inventory, pricing and margin for the Shortlist publisher network.</p>
     ${error ? `<p class="err">${esc(error)}</p>` : ''}
@@ -63,6 +63,7 @@ export function signInPage(opts: { error?: string; configured?: boolean; tokenFa
       </form>
       <p class="foot">Opens inventory and pricing without a Shortlist sign-in. Shortlist data stays unavailable in this mode.</p>
     </details>` : ''}
+  </div>
   </div>
 </body>
 </html>`;
@@ -82,35 +83,41 @@ export const ADMIN_HTML = `<!doctype html>
 <style>
   :root { --bg:#F7F8FB; --surface:#fff; --line:#e6e9ec; --ink:#17204B; --muted:#6e7aa4;
           --accent:#30D2AD; --accent-2:#39D6B4; --cyan:#00AADD; --good:#0f8a6e;
-          --bad:#c0453a; --warn:#c48a12; }
+          --bad:#c0453a; --warn:#c48a12; --navy:#17204B; }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--ink);
          font:14px/1.5 Inter,system-ui,-apple-system,"Segoe UI",sans-serif; }
-  .wrap { max-width:1240px; margin:0 auto; padding:20px 24px 60px; }
-  h1 { font-size:20px; margin:0; letter-spacing:-.02em; }
-  h1 small { color:var(--muted); font-weight:400; }
-  h1 .brand { color:var(--cyan); font-size:11px; font-weight:600; letter-spacing:.08em;
-              text-transform:uppercase; display:block; margin-bottom:4px; }
-  header { display:flex; align-items:baseline; justify-content:space-between; gap:16px;
-           padding-bottom:14px; border-bottom:1px solid var(--line); margin-bottom:16px; }
-  .stats { display:flex; gap:20px; flex-wrap:wrap; color:var(--muted); font-size:13px; }
-  .stats b { color:var(--ink); font-size:15px; }
-  .stats .warn { color:var(--warn); }
+  .topbar { background:var(--navy); color:#fff; }
+  .topbar-inner { max-width:1240px; margin:0 auto; padding:14px 24px; display:flex;
+                  align-items:center; gap:18px; flex-wrap:wrap; }
+  .logo { font-weight:700; font-size:22px; letter-spacing:-.04em; color:#fff; text-decoration:none; }
+  .logo span { color:var(--accent); }
+  .product { font-size:13px; color:rgba(255,255,255,.72); margin-right:auto; }
+  .product em { font-style:normal; color:#fff; font-weight:500; }
+  .wrap { max-width:1240px; margin:0 auto; padding:16px 24px 60px; }
+  .stats { display:flex; gap:18px; flex-wrap:wrap; color:rgba(255,255,255,.7); font-size:13px; }
+  .stats b { color:#fff; font-size:15px; }
+  .stats .warn { color:#ffd36a; }
+  .whoami { font-size:12.5px; color:rgba(255,255,255,.7); display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .whoami b { color:#fff; }
+  .whoami a { color:var(--accent); }
   .bar { display:flex; gap:10px; flex-wrap:wrap; margin:14px 0; }
+  .hint { color:var(--muted); font-size:12.5px; margin:-6px 0 12px; }
   input, select, button { background:var(--surface); color:var(--ink); border:1px solid var(--line);
     border-radius:7px; padding:7px 10px; font:inherit; }
   input:focus, select:focus { outline:2px solid var(--accent); outline-offset:-1px; }
   button { cursor:pointer; }
-  button.primary { background:var(--accent); color:var(--ink); border-color:var(--accent); font-weight:600; }
+  button.primary { background:var(--accent); color:var(--navy); border-color:var(--accent); font-weight:700; }
   button.primary:hover { background:var(--accent-2); }
-  table { width:100%; border-collapse:collapse; font-size:13px; }
-  th { text-align:left; color:var(--muted); font-weight:500; padding:8px 10px; border-bottom:1px solid var(--line);
-       position:sticky; top:0; background:var(--bg); white-space:nowrap; }
+  table { width:100%; border-collapse:collapse; font-size:13px; background:var(--surface); border-radius:10px; overflow:hidden; }
+  th { text-align:left; color:#fff; font-weight:600; padding:10px 10px; border-bottom:1px solid rgba(255,255,255,.08);
+       position:sticky; top:0; background:var(--navy); white-space:nowrap; }
   th.sort { cursor:pointer; user-select:none; }
-  th.sort:hover { color:var(--ink); }
-  th.sort.sorted { color:var(--ink); }
-  th.sort[data-dir="asc"]::after { content:' ↑'; font-size:11px; color:var(--cyan); }
-  th.sort[data-dir="desc"]::after { content:' ↓'; font-size:11px; color:var(--cyan); }
+  th.sort:hover { color:var(--accent); }
+  th.sort::after { content:' ⇅'; font-size:11px; color:var(--accent); opacity:.55; font-weight:700; }
+  th.sort.sorted { color:var(--accent); }
+  th.sort.sorted[data-dir="asc"]::after { content:' ↑'; opacity:1; }
+  th.sort.sorted[data-dir="desc"]::after { content:' ↓'; opacity:1; }
   td { padding:6px 10px; border-bottom:1px solid var(--line); white-space:nowrap; }
   td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
   td input { width:70px; padding:4px 6px; text-align:right; }
@@ -133,7 +140,7 @@ export const ADMIN_HTML = `<!doctype html>
   .addform { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:8px; margin-top:10px; }
   .tabs { display:flex; gap:6px; margin:14px 0 4px; }
   .tab { background:transparent; border:1px solid var(--line); }
-  .tab.active { background:var(--accent); color:var(--ink); border-color:var(--accent); font-weight:600; }
+  .tab.active { background:var(--accent); color:var(--navy); border-color:var(--accent); font-weight:700; }
   .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin:16px 0; }
   .kpi { background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:14px 16px; }
   .kpi .n { font-size:26px; font-variant-numeric:tabular-nums; }
@@ -144,7 +151,8 @@ export const ADMIN_HTML = `<!doctype html>
   section h3 small { color:var(--muted); font-weight:400; }
   .mini { width:100%; border-collapse:collapse; font-size:12.5px; }
   .mini td, .mini th { padding:5px 8px; border-bottom:1px solid var(--line); }
-  .mini th { color:var(--muted); font-weight:500; text-align:left; }
+  .mini th { color:var(--muted); font-weight:500; text-align:left; background:var(--surface);
+             position:static; }
   .mini td.n { text-align:right; font-variant-numeric:tabular-nums; }
   .empty { color:var(--muted); font-size:13px; padding:8px 0; }
   .barcell { background:linear-gradient(90deg,var(--accent) var(--w,0%),transparent 0); border-radius:3px; }
@@ -159,9 +167,7 @@ export const ADMIN_HTML = `<!doctype html>
   .spark-bar { width:100%; max-width:28px; background:var(--accent); border-radius:4px 4px 0 0; min-height:2px; }
   .spark-col span { font-size:10px; color:var(--muted); margin-top:6px; }
   .ana-note { color:var(--muted); font-size:13.5px; max-width:72ch; margin:0 0 8px; }
-  .whoami { font-size:12.5px; color:var(--muted); display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-  .whoami b { color:var(--ink); }
-  .whoami a { color:var(--cyan); }
+  .topbar .abil { color:#fff; background:rgba(48,210,173,.28); }
   .abil { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; background:rgba(48,210,173,.14);
           color:var(--ink); padding:1px 6px; border-radius:4px; }
   .banner { background:rgba(196,138,18,.10); border-left:3px solid var(--warn); color:var(--ink);
@@ -187,12 +193,15 @@ export const ADMIN_HTML = `<!doctype html>
 </style>
 </head>
 <body>
-<div id="app" class="wrap">
-  <header>
-    <h1><span class="brand">Shortlist</span>placement.sh <small>operator console</small></h1>
+<div class="topbar">
+  <div class="topbar-inner">
+    <a class="logo" href="https://shortlist.io/" target="_blank" rel="noopener">shortlist<span>.</span></a>
+    <div class="product">placement.sh <em>operator console</em></div>
     <div class="stats" id="stats"></div>
     <div class="whoami" id="whoami"></div>
-  </header>
+  </div>
+</div>
+<div id="app" class="wrap">
   <div class="tabs">
     <button id="tab-inv" class="tab active" onclick="showTab('inv')">Inventory</button>
     <button id="tab-ord" class="tab" onclick="showTab('ord')">Orders</button>
@@ -210,6 +219,7 @@ export const ADMIN_HTML = `<!doctype html>
     <select id="fmode"><option value="">all modes</option><option value="paid_placement">paid_placement</option><option value="self_serve">self_serve</option><option value="apply_editorial">apply_editorial</option><option value="link_exchange">link_exchange</option><option value="unavailable">unavailable</option></select>
     <button class="primary" onclick="load(1)">Search</button>
   </div>
+  <p class="hint">Click any column header to sort. Score starts highest first.</p>
   <details>
     <summary>+ Add site</summary>
     <div class="addform">
@@ -224,19 +234,19 @@ export const ADMIN_HTML = `<!doctype html>
   <div style="overflow-x:auto">
   <table>
     <thead><tr>
-      <th class="sort" data-sort="domain">Domain</th>
-      <th class="sort" data-sort="niche">Niche</th>
-      <th class="num sort" data-sort="cite_score">Score</th>
-      <th class="num sort" data-sort="dr">DR</th>
-      <th class="num sort" data-sort="traffic">Org traffic</th>
-      <th class="num sort" data-sort="seller_price">Seller $</th>
-      <th class="num sort" data-sort="markup">Markup</th>
-      <th class="num sort" data-sort="listed_price">Listed $</th>
-      <th class="num sort" data-sort="margin">Margin $</th>
-      <th class="sort" data-sort="acquisition_mode">Acquisition</th>
-      <th class="sort" data-sort="link_attribute">Link attr</th>
-      <th class="num sort" data-sort="max_links_per_post">Max links</th>
-      <th class="sort" data-sort="status">Status</th>
+      <th class="sort" data-sort="domain" title="Click to sort">Domain</th>
+      <th class="sort" data-sort="niche" title="Click to sort">Niche</th>
+      <th class="num sort" data-sort="cite_score" title="Click to sort">Score</th>
+      <th class="num sort" data-sort="dr" title="Click to sort">DR</th>
+      <th class="num sort" data-sort="traffic" title="Click to sort">Org traffic</th>
+      <th class="num sort" data-sort="seller_price" title="Click to sort">Seller $</th>
+      <th class="num sort" data-sort="markup" title="Click to sort">Markup</th>
+      <th class="num sort" data-sort="listed_price" title="Click to sort">Listed $</th>
+      <th class="num sort" data-sort="margin" title="Click to sort">Margin $</th>
+      <th class="sort" data-sort="acquisition_mode" title="Click to sort">Acquisition</th>
+      <th class="sort" data-sort="link_attribute" title="Click to sort">Link attr</th>
+      <th class="num sort" data-sort="max_links_per_post" title="Click to sort">Max links</th>
+      <th class="sort" data-sort="status" title="Click to sort">Status</th>
     </tr></thead>
     <tbody id="rows"></tbody>
   </table>
@@ -488,6 +498,7 @@ function showError(target, message, retry) {
 // block it: each step is isolated, and a failure says so instead of leaving
 // the table blank.
 async function boot() {
+  markSortHeaders();
   load(1).catch(e => showError('rows', 'Could not load inventory: ' + (e && e.message || e), 'load(1)'));
   stats().catch(e => showError('stats', 'Could not load totals: ' + (e && e.message || e), 'stats()'));
   whoami().catch(e => {

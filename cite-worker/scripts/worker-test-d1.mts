@@ -423,6 +423,7 @@ r = await fs2('/admin');
 let page = await r.text();
 assert(r.status === 200 && page.includes('Sign in with Shortlist'), 'console shows the Sign in with Shortlist button');
 assert(page.includes('#17204B') && page.includes('#30D2AD') && page.includes('Inter'), 'sign-in uses Shortlist navy, mint and Inter');
+assert(page.includes('shortlist') && page.includes('class="logo"'), 'sign-in shows the Shortlist wordmark');
 assert(page.indexOf('Sign in with Shortlist') < page.indexOf('operator token'),
   'SSO is the primary path; the operator token is a secondary fallback');
 
@@ -473,6 +474,8 @@ r = await fs2('/admin', { headers: { cookie } });
   assert(consoleHtml.includes('operator console'), 'session opens the console');
   assert(consoleHtml.includes('Orders'), 'console has an Orders tab');
   assert(consoleHtml.includes('#17204B') && consoleHtml.includes('#30D2AD'), 'console uses Shortlist navy and mint');
+  assert(consoleHtml.includes('class="logo"') && consoleHtml.includes('shortlist'), 'console shows the Shortlist wordmark');
+  assert(consoleHtml.includes('Click to sort'), 'column headers advertise sorting');
   assert(consoleHtml.includes('Copy post'), 'Orders tab can copy the post out of the platform');
   assert(consoleHtml.includes('data-sort="cite_score"') && consoleHtml.includes('data-sort="listed_price"'),
     'inventory columns are sortable');

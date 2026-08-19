@@ -37,6 +37,17 @@ await pg.waitForTimeout(1200);
 const rowCount = await pg.locator('#rows tr').count();
 console.log('rows:', rowCount);
 if (rowCount < 1) { console.error('FAIL: inventory table rendered no rows'); process.exitCode = 1; }
+const logo = await pg.locator('.logo').textContent();
+if (!/shortlist/.test(logo || '')) { console.error('FAIL: Shortlist wordmark missing'); process.exitCode = 1; }
+let lastSites = '';
+pg.on('request', req => { if (req.url().includes('/admin/api/sites')) lastSites = req.url(); });
+await pg.click('#pane-inv th[data-sort="listed_price"]');
+await pg.waitForTimeout(600);
+if (!/sort=listed_price/.test(lastSites)) {
+  console.error('FAIL: clicking Listed $ did not sort, last request', lastSites);
+  process.exitCode = 1;
+}
+console.log('sort request:', lastSites);
 for (const tab of ['ord', 'ana', 'eng', 'key']) {
   await pg.click('#tab-' + tab);
   await pg.waitForTimeout(500);

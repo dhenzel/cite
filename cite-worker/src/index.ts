@@ -1314,7 +1314,7 @@ async function handleAuth(req: Request, env: Env, path: string): Promise<Respons
 }
 
 const html = (body: string, status = 200) =>
-  new Response(body, { status, headers: { 'content-type': 'text/html; charset=utf-8' } });
+  new Response(body, { status, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
 
 // ---------- engine data panels (SPEC §18) ----------
 // Each panel resolves its tool from tools/list and degrades on its own: a role
@@ -1788,10 +1788,10 @@ export default {
           tokenFallback: tokenConsoleAllowed(env) && !!env.ADMIN_TOKEN,
         }), {
           status: session || supplied ? 403 : 200,
-          headers: { 'content-type': 'text/html; charset=utf-8' },
+          headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
         });
       }
-      return new Response(ADMIN_HTML, { headers: { 'content-type': 'text/html; charset=utf-8' } });
+      return new Response(ADMIN_HTML, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
     }
 
     if (url.pathname.startsWith('/admin/api/engine/')) {

@@ -89,7 +89,7 @@ r = await f('/llms.txt');
 {
   const llms = await r.text();
   assert(r.status === 200 && llms.includes('placement.sh'), 'llms.txt served for agents');
-  assert(!/shortlist/i.test(llms), 'agent docs stay quiet on Shortlist');
+  assert(/shortlist\.io/i.test(llms) && /about-us/i.test(llms), 'agent docs name Shortlist so the human can look us up before paying');
 }
 r = await f('/.well-known/mcp/server.json');
 {
@@ -102,10 +102,11 @@ assert((await r.text()).includes('claude mcp add --transport http placement'), '
 r = await worker.fetch(new Request('https://placement.sh/', { headers: { accept: 'text/html' } }), env);
 const home = await r.text();
 assert(r.status === 200 && (r.headers.get('content-type') ?? '').includes('text/html'), 'browser homepage is HTML');
-assert(home.includes('Buy publisher placements') && home.includes('Claude') && home.includes('ChatGPT') && home.includes('Grok') && home.includes('Kimi') && home.includes('Cursor'), 'homepage names the product and agent buttons');
+assert(home.includes('Buy publisher placements') && home.includes('Claude') && home.includes('ChatGPT') && home.includes('Grok') && home.includes('Kimi') && home.includes('Cursor') && home.includes('Hermes'), 'homepage names the product and agent buttons');
 assert(home.includes('https://placement.sh/mcp') && !home.includes('workers.dev'), 'homepage shows MCP URL, not workers.dev');
 assert(home.includes('https://shortlist.io/') && home.includes('https://shortlist.io/about-us/'), 'homepage links Shortlist and the team page');
-assert(/A <a href="https:\/\/shortlist\.io\/">Shortlist<\/a> product/.test(home) && /since 2018/.test(home), 'homepage names Shortlist as the operator, quietly');
+assert(/Who runs this/.test(home) && /A <a href="https:\/\/shortlist\.io\/">Shortlist<\/a> product/.test(home) && /since 2018/.test(home), 'homepage explains Shortlist as the operator');
+assert(home.includes('data-client="hermes"') && home.includes('hermes mcp add placement --url'), 'Hermes is an add-to-agent option');
 assert(!/claim a free/i.test(home) && /no free listings/i.test(home), 'homepage says there are no free listings');
 assert(!home.includes('window.open') && !home.includes('cursor://') && !/https:\/\/(claude\.ai|chatgpt\.com|grok\.com)\//.test(home), 'agent buttons stay on-page and do not deep-link out');
 assert(home.includes('data-client="cursor"') && !home.includes('<a class="btn"'), 'Cursor is a button like the others, not an outbound link');
@@ -203,11 +204,14 @@ let h = await call('help');
 assert(h.call_first === 'estimate' && h.product === 'placement.sh', 'help orients agents');
 assert(Array.isArray(h.never) && h.never.some((x: string) => /free listing/i.test(x)), 'help forbids offering free listings');
 assert(h.playbook.some((x: string) => /email/i.test(x)), 'help says to ask the human for an email');
+assert(h.who_runs_this?.operator === 'Shortlist' && /shortlist\.io\/about-us/.test(h.who_runs_this.team), 'help names Shortlist and the team page');
+assert(h.playbook.some((x: string) => /look us up/i.test(x)), 'help tells the agent to show Shortlist before the human pays');
 
 let camp = await call('create_campaign', { target_url: 'https://buyer.test', topics: ['finance'], budget: 4000 });
 assert(camp.error === 'ACCOUNT_REQUIRED' && /email/i.test(camp.next_step), 'booking without an account asks for email, not a free listing');
 camp = await call('create_campaign', { target_url: 'https://buyer.test', topics: ['finance'], budget: 4000 }, apiKey);
 assert(camp.error === 'INSUFFICIENT_CREDIT' && /do not offer/i.test(camp.next_step), 'INSUFFICIENT_CREDIT forbids a free-listing substitute');
+assert(/shortlist\.io/i.test(camp.next_step) && /about-us/i.test(camp.next_step), 'payment step tells the agent to show Shortlist before the human pays');
 
 let est = await call('estimate', { topics: ['finance'], budget: 4000, target_url: 'https://buyer.test/pricing' });
 assert(est.target_url === 'https://buyer.test/pricing' && Array.isArray(est.plan), 'estimate accepts target_url');

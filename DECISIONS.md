@@ -140,13 +140,14 @@ Rows stay in D1 for the operator console. This supersedes the 2026-08-17 "free p
 
 Paying humans land on a site with no company, no people, no aged domain. That reads like a scam when a Stripe Checkout is next. David: put Shortlist on the site, subtly; link the company and the team page so a buyer can see real people. (“shoppers.io” in the ask is the Shortlist team page at [shortlist.io/about-us](https://shortlist.io/about-us/).)
 
-**Decision:**
-- **Human website (placement.sh HTML):** quiet ownership line in the footer — “A Shortlist product — publisher placements since 2018” plus links to [shortlist.io](https://shortlist.io/) and [the team](https://shortlist.io/about-us/). Not a banner, not “programmatic link placement at scale.”
-- **Agent surfaces stay quiet:** MCP tools, `help`, `/llms.txt`, server card. Agents must not pitch Shortlist in a transcript a publisher could see.
-- **Buyer mail From `@shortlist.io`**, not `hello@placement.sh`. Anja/ops use the Shortlist mailbox. Skip Cloudflare Email Sending / Resend-on-placement.sh for v1 buyer mail.
+**Decision (updated 2026-08-19):**
+- **Human website:** a visible “Who runs this” block plus footer — Shortlist since 2018, links to [shortlist.io](https://shortlist.io/) and [the team](https://shortlist.io/about-us/). Copy is explanatory, not a banner about “programmatic placements at scale.”
+- **Buyer MCP (Claude etc.):** `help`, initialize `instructions`, `/llms.txt`, `register_account`, and the payment/`INSUFFICIENT_CREDIT` `next_step` tell the agent to show Shortlist + the team page **before the human pays**. Inventory stays blind. Do not invent a different owner.
+- **Buyer mail From `@shortlist.io`**, not `hello@placement.sh`. Anja/ops use the Shortlist mailbox.
 - **Publisher outreach unchanged:** named Shortlist human, never From placement.sh.
+- **Hermes** is a first-class add-to-agent option on the homepage (`hermes mcp add placement --url …`).
 
-This supersedes the 2026-08-13 “do NOT put Shortlist in the footer” call in SPEC §14. Concealment still applies to inventory and to agent copy; it no longer applies to the human paying page.
+This supersedes the 2026-08-13 “do NOT put Shortlist in the footer” call, and the 2026-08-18 “agent surfaces stay quiet” line. Concealment still applies to **inventory**. The paying human is told who operates placement.sh.
 
 ## Still open
 

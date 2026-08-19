@@ -275,7 +275,7 @@ The gap that remains — and that Cite must own: CrowdReply's writes sit **behin
 3. ~~Masked vs. open domains on the free tier~~ — **SETTLED 2026-08-15: blind placements — domains hidden at every tier until the link is delivered** (§11).
 4. ~~Who staffs the outreach inbox~~ — **SETTLED 2026-08-13: existing Shortlist team** (§8).
 5. **Finished posts vs. pitches** — currently finished posts; David flagged this as revisitable. *(Still open.)*
-6. ~~Branding — separate brand vs. Shortlist sub-product~~ — **SETTLED 2026-08-13: separate brand.** Ownership line on the **human website** added 2026-08-18 (§14). Agent surfaces stay quiet.
+6. ~~Branding — separate brand vs. Shortlist sub-product~~ — **SETTLED 2026-08-13: separate brand.** Human site + buyer MCP name Shortlist for trust (2026-08-19, §14).
 
 ---
 
@@ -283,9 +283,9 @@ The gap that remains — and that Cite must own: CrowdReply's writes sit **behin
 
 **Launch as placement.sh, not as a Shortlist sub-brand.** *(Confirmed 2026-08-13.)* Agent-facing infrastructure and a human agency stay different motions.
 
-**Human website names the operator.** *(Added 2026-08-18.)* People pay real money. A domain with no company, no people, and no history reads as a fly-by-night. The placement.sh HTML footer carries a quiet line: Shortlist product, publisher placements since 2018, links to [shortlist.io](https://shortlist.io/) and [the team](https://shortlist.io/about-us/). Not a campaign about “programmatic placements at scale.”
+**Human website and buyer MCP name the operator.** *(2026-08-18, expanded 2026-08-19.)* People pay real money. A domain with no company reads as a fly-by-night. placement.sh HTML explains that Shortlist has bought publisher placements since 2018, with links to [shortlist.io](https://shortlist.io/) and [the team](https://shortlist.io/about-us/). Claude/MCP `help` and the payment `next_step` tell the agent to show those same links before the human pays.
 
-**Agent surfaces stay quiet.** MCP `help`, `/llms.txt`, and the server card do not mention Shortlist. An agent transcript is something a publisher can be shown; the paying human’s browser tab is not.
+**Publisher-facing copy stays quiet about the product.** Outreach is still Shortlist humans, never From placement.sh (§8). Inventory stays blind until delivery (§11). Do not market “programmatic placements at scale” at publishers.
 
 **Buyer mail From `@shortlist.io`.** Do not send buyer transactional mail from `hello@placement.sh` in v1.
 

@@ -76,8 +76,9 @@ const json = (payload: unknown, status = 200) =>
 // operator console/admin MCP. David: show every Ahrefs overview stat,
 // with Ahrefs' names, attributed, never renamed. Organic traffic is the
 // exact Ahrefs number (not a band). Moz DA / Majestic TF/CF are not
-// shown anywhere; legacy da/tf/cf columns may still sit in D1. Domain
-// stays hidden from buyers until delivery.
+// shown or used anywhere. Placement Score is 50% Ahrefs DR + 50% Ahrefs
+// organic traffic. Legacy da/tf/cf columns may still sit in D1 unused.
+// Domain stays hidden from buyers until delivery.
 type Row = Record<string, unknown>;
 
 const finiteNum = (v: unknown): number | undefined =>
@@ -106,10 +107,18 @@ const operatorSite = (r: Row): Row => {
 };
 const operatorSites = (rows: Row[]): Row[] => rows.map(operatorSite);
 
+const trafficPts = (traffic: unknown): number =>
+  typeof traffic === 'number' ? Math.min(100, 20 * Math.log10(traffic + 1)) : 0;
+
+/** Placement Score: 50% Ahrefs DR + 50% Ahrefs organic traffic (log-scaled). */
+const ahrefsScore = (dr: unknown, traffic: unknown): number => {
+  const d = typeof dr === 'number' ? dr : 0;
+  return Math.max(0, Math.min(100, Math.round(0.5 * d + 0.5 * trafficPts(traffic))));
+};
+
 const scoreComponents = (r: Row) => ({
   authority: typeof r.dr === 'number' ? Math.round(r.dr) : undefined,
-  traffic: typeof r.traffic === 'number' ? Math.min(100, Math.round(20 * Math.log10(r.traffic + 1))) : undefined,
-  spam_flag: typeof r.spam === 'number' && r.spam > 0 ? true : false,
+  traffic: typeof r.traffic === 'number' ? Math.round(trafficPts(r.traffic)) : undefined,
 });
 
 /** Buyer MCP sells paid placements only. $0 / self-serve rows stay in D1 for operators. */
@@ -1383,7 +1392,7 @@ const adminTools = [
   },
   {
     name: 'admin_update_metrics',
-    description: 'Push refreshed Ahrefs overview stats for a publisher (domain_rating/dr, organic_traffic/traffic, organic_keywords, referring_domains, backlinks, ahrefs_rank, organic_value, spam) and recompute Placement Score and traffic band. Moz DA and Majestic TF/CF are not accepted or returned.',
+    description: 'Push refreshed Ahrefs overview stats for a publisher (domain_rating/dr, organic_traffic/traffic, organic_keywords, referring_domains, backlinks, ahrefs_rank, organic_value) and recompute Placement Score (50% Ahrefs DR + 50% Ahrefs organic traffic). Moz DA, Majestic TF/CF, and Moz spam are not accepted or used.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1392,7 +1401,7 @@ const adminTools = [
         traffic: { type: 'number' }, organic_traffic: { type: 'number' },
         organic_keywords: { type: 'number' }, referring_domains: { type: 'number' },
         backlinks: { type: 'number' }, ahrefs_rank: { type: 'number' },
-        organic_value: { type: 'number' }, spam: { type: 'number' },
+        organic_value: { type: 'number' },
       },
     },
   },
@@ -1546,34 +1555,24 @@ async function runAdminTool(env: Env, req: Request, name: string, args: Row): Pr
       const m = {
         dr: numArg('dr', 'domain_rating') ?? keep(site.dr),
         traffic: numArg('traffic', 'organic_traffic') ?? keep(site.traffic),
-        spam: numArg('spam') ?? keep(site.spam),
         ahrefs_organic_keywords: numArg('organic_keywords') ?? keep(site.ahrefs_organic_keywords),
         ahrefs_referring_domains: numArg('referring_domains') ?? keep(site.ahrefs_referring_domains),
         ahrefs_backlinks: numArg('backlinks') ?? keep(site.ahrefs_backlinks),
         ahrefs_rank: numArg('ahrefs_rank') ?? keep(site.ahrefs_rank),
         ahrefs_organic_value: numArg('organic_value') ?? keep(site.ahrefs_organic_value),
       };
-      // Score still uses leftover sheet DA/TF if present so refreshing Ahrefs
-      // fields does not reshuffle the catalog. Those values are never returned.
-      const da = keep(site.da);
-      const tf = keep(site.tf);
-      const cf = keep(site.cf);
-      const trafficPts = Math.min(100, 20 * Math.log10((m.traffic ?? 0) + 1));
-      const ratio = cf && cf > 0 ? Math.min(1, (tf ?? 0) / cf) : 0;
-      const score = Math.max(0, Math.min(100, Math.round(
-        0.4 * (m.dr ?? 0) + 0.2 * (da ?? 0) + 0.3 * trafficPts + 0.1 * (100 * ratio) - 8 * (m.spam ?? 0),
-      )));
+      const score = ahrefsScore(m.dr, m.traffic);
       const t = m.traffic ?? 0;
       const band = t < 500 ? '<500/mo' : t < 1_000 ? '500–1k/mo' : t < 5_000 ? '1k–5k/mo'
         : t < 10_000 ? '5k–10k/mo' : t < 50_000 ? '10k–50k/mo' : t < 250_000 ? '50k–250k/mo' : '250k+/mo';
       await env.DB.prepare(`
-        UPDATE sites SET dr=?, traffic=?, spam=?, traffic_band=?, cite_score=?,
+        UPDATE sites SET dr=?, traffic=?, traffic_band=?, cite_score=?,
                          ahrefs_organic_keywords=?, ahrefs_referring_domains=?, ahrefs_backlinks=?,
                          ahrefs_rank=?, ahrefs_organic_value=?,
                          metrics_updated_at=date('now'), updated_at=datetime('now')
         WHERE id = ?
       `).bind(
-        m.dr, m.traffic, m.spam, band, score,
+        m.dr, m.traffic, band, score,
         m.ahrefs_organic_keywords, m.ahrefs_referring_domains, m.ahrefs_backlinks,
         m.ahrefs_rank, m.ahrefs_organic_value, site.id,
       ).run();

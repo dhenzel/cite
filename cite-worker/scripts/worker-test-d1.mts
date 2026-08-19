@@ -278,7 +278,8 @@ ad = await adminCall('admin_update_metrics', {
   domain: 'secret-example.com', dr: 91, traffic: 500000,
   organic_keywords: 9000, referring_domains: 2100, backlinks: 80000, ahrefs_rank: 12000, organic_value: 45000,
 });
-assert(ad.cite_score > 0 && ad.traffic_band === '250k+/mo', 'admin_update_metrics recomputes score and band');
+assert(ad.cite_score === 96 && ad.traffic_band === '250k+/mo',
+  `admin_update_metrics uses Ahrefs-only score 50/50 DR+traffic (got ${ad.cite_score})`);
 assert(!ad.metrics || (!('da' in ad.metrics) && !('tf' in ad.metrics) && !('cf' in ad.metrics)),
   'admin_update_metrics does not return Moz/Majestic');
 g = await call('get_publisher', { publisher_id: 'cs_aaa111bbb222' });

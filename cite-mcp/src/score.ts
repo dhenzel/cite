@@ -1,30 +1,19 @@
-// Cite Score v0 — the composite that replaces raw vendor metrics in every
-// API response (SPEC §5). Weights are a first guess to be re-fit once lift
-// data exists; keep the formula in this one place.
+// Placement Score — Ahrefs-only (2026-08-19). Replaces raw vendor metrics
+// in every API response (SPEC §5). Moz DA / Majestic TF/CF / Moz spam are
+// not inputs. Weights are a first guess to re-fit once lift data exists.
 //
-//   Current (imported sheet): 40% Ahrefs DR, 20% Moz DA, 30% traffic (log-scaled),
-//   10% TrustFlow/CitationFlow ratio, minus a spam penalty. Clamped to 0–100.
-//
-//   Going forward (2026-08-19): Ahrefs only. Re-fit this to DR + Ahrefs organic
-//   traffic (+ spam) when metrics are refreshed; do not keep pulling Moz/Majestic.
+//   50% Ahrefs Domain Rating + 50% Ahrefs organic traffic (log-scaled to 0–100).
+//   Clamped to 0–100.
 
 export interface RawMetrics {
   dr: number | null;
-  da: number | null;
   traffic: number | null;
-  tf: number | null;
-  cf: number | null;
-  spam: number | null;
 }
 
 export function citeScore(m: RawMetrics): number {
   const dr = m.dr ?? 0;
-  const da = m.da ?? 0;
   const trafficPts = Math.min(100, 20 * Math.log10((m.traffic ?? 0) + 1));
-  const ratio = m.cf && m.cf > 0 ? Math.min(1, (m.tf ?? 0) / m.cf) : 0;
-  const spamPenalty = 8 * (m.spam ?? 0);
-  const s = 0.4 * dr + 0.2 * da + 0.3 * trafficPts + 0.1 * (100 * ratio) - spamPenalty;
-  return Math.max(0, Math.min(100, Math.round(s)));
+  return Math.max(0, Math.min(100, Math.round(0.5 * dr + 0.5 * trafficPts)));
 }
 
 // Buyer-facing price: seller price plus margin. The multiple is internal and
@@ -33,7 +22,7 @@ export function listedPrice(sellerPrice: number): number {
   return Math.ceil((sellerPrice * 1.6) / 5) * 5;
 }
 
-// Traffic is exposed as a band, never the vendor's number (SPEC §5).
+// Search convenience band. Exact Ahrefs organic traffic is also shown.
 export function trafficBand(traffic: number | null): string {
   const t = traffic ?? 0;
   if (t < 500) return '<500/mo';

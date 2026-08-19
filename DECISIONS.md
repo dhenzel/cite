@@ -201,7 +201,9 @@ David: we can show all the stats Ahrefs shows.
 - organic traffic (**exact**, not a band)
 - organic keywords, referring domains, backlinks, Ahrefs Rank, organic value — when the row has them
 
-`traffic_band` stays as a search convenience. Moz DA and Majestic TF/CF stay off every surface (buyer MCP, operator console, admin MCP). Leftover sheet DA/TF may still sit in D1 and feed Placement Score internally until we re-fit; they are never returned.
+`traffic_band` stays as a search convenience. Moz DA and Majestic TF/CF stay off every surface (buyer MCP, operator console, admin MCP).
+
+**Placement Score is Ahrefs-only:** 50% Domain Rating + 50% organic traffic (log-scaled). Moz DA, Majestic TF/CF, and Moz spam are not inputs. Recompute on D1 with `migrations/008_ahrefs_score.sql` at deploy.
 
 What we have in D1 today: DR + organic traffic from the sheet. The extra overview columns are nullable until an Ahrefs refresh fills them. Domain is still hidden from buyers until delivery.
 

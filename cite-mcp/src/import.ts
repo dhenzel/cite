@@ -45,8 +45,7 @@ const C = {
   name: col('Name'), email: col('Email To'), poc: col('Point Of Contact'),
   note: col('Note'), rate: col('Rate'),
   std: col('Standard'), prem: col('Premium'), plat: col('Platinum'),
-  tf: col('TrustFlow'), cf: col('CitationFlow'), da: col('DA'),
-  spam: col('Spam Score'), traffic: col('Organic Traffic (Ahrefs)'),
+  traffic: col('Organic Traffic (Ahrefs)'),
   dr: col('DR (Ahrefs)'), updated: col('Updated'),
 };
 
@@ -73,10 +72,7 @@ db.transaction(() => {
     const domain = (r[C.website] ?? '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
     if (!domain || !domain.includes('.')) { skipped++; continue; }
     const seller = num(r[C.rate]);
-    const metrics = {
-      dr: num(r[C.dr]), da: num(r[C.da]), traffic: num(r[C.traffic]),
-      tf: num(r[C.tf]), cf: num(r[C.cf]), spam: num(r[C.spam]),
-    };
+    const metrics = { dr: num(r[C.dr]), traffic: num(r[C.traffic]) };
     const res = insert.run(
       mintHandle(domain, salt), domain,
       (r[C.name] ?? '').trim() || null, (r[C.email] ?? '').trim() || null,
@@ -84,8 +80,8 @@ db.transaction(() => {
       (r[C.niche] ?? '').trim() || null, (r[C.subniche] ?? '').trim() || null,
       seller, seller && seller > 0 ? listedPrice(seller) : null,
       yes(r[C.std]), yes(r[C.prem]), yes(r[C.plat]),
-      metrics.da, metrics.dr, metrics.tf, metrics.cf, metrics.spam,
-      metrics.traffic, trafficBand(metrics.traffic), citeScore(metrics),
+      null, metrics.dr, null, null, null,
+      metrics.traffic, trafficBand(metrics.traffic), citeScore({ dr: metrics.dr, traffic: metrics.traffic }),
       (r[C.updated] ?? '').trim() || null,
     );
     if (res.changes > 0) imported++; else skipped++;

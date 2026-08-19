@@ -107,8 +107,9 @@ export const ADMIN_HTML = `<!doctype html>
     border-radius:7px; padding:7px 10px; font:inherit; }
   input:focus, select:focus { outline:2px solid var(--accent); outline-offset:-1px; }
   button { cursor:pointer; }
-  button.primary { background:var(--accent); color:var(--navy); border-color:var(--accent); font-weight:700; }
-  button.primary:hover { background:var(--accent-2); }
+  button.primary, a.primary { background:var(--accent); color:var(--navy); border-color:var(--accent); font-weight:700; }
+  button.primary:hover, a.primary:hover { background:var(--accent-2); }
+  a.primary { display:inline-block; text-decoration:none; padding:7px 10px; border-radius:7px; border:1px solid var(--accent); }
   table { width:100%; border-collapse:collapse; font-size:13px; background:var(--surface); border-radius:10px; overflow:hidden; }
   th { text-align:left; color:#fff; font-weight:600; padding:10px 10px; border-bottom:1px solid rgba(255,255,255,.08);
        position:sticky; top:0; background:var(--navy); white-space:nowrap; }
@@ -130,6 +131,9 @@ export const ADMIN_HTML = `<!doctype html>
   .pill.paused { background:rgba(196,138,18,.12); color:var(--warn); }
   .pill.burned { background:rgba(192,69,58,.12); color:var(--bad); }
   .pill.unknown { background:rgba(110,122,164,.12); color:var(--muted); }
+  .pill.open { background:rgba(48,210,173,.16); color:var(--good); }
+  .pill.follow { background:rgba(196,138,18,.12); color:var(--warn); }
+  .pill.expired { background:rgba(192,69,58,.12); color:var(--bad); }
   #login { max-width:420px; margin:120px auto; text-align:center; }
   #login input { width:100%; margin:12px 0; text-align:center; }
   .toast { position:fixed; bottom:20px; right:20px; background:var(--surface); border:1px solid var(--line);
@@ -205,6 +209,7 @@ export const ADMIN_HTML = `<!doctype html>
   <div class="tabs">
     <button id="tab-inv" class="tab active" onclick="showTab('inv')">Inventory</button>
     <button id="tab-ord" class="tab" onclick="showTab('ord')">Orders</button>
+    <button id="tab-fol" class="tab" onclick="showTab('fol')">Follow-up</button>
     <button id="tab-ana" class="tab" onclick="showTab('ana')">Analytics</button>
     <button id="tab-eng" class="tab" onclick="showTab('eng')">Shortlist</button>
     <button id="tab-key" class="tab" onclick="showTab('key')">Connect</button>
@@ -272,6 +277,12 @@ export const ADMIN_HTML = `<!doctype html>
       <section><h3>Signups</h3><div id="a_signups"></div></section>
       <section><h3>Legacy free claims</h3><div id="a_free"></div></section>
     </div>
+  </div>
+
+  <div id="pane-fol" style="display:none">
+    <p class="prose sub">People who opened Stripe Checkout and did not finish paying. Email them from here — we do not send a nudge automatically. A session still marked “in Checkout” may just be mid-payment; wait ~30 minutes before chasing.</p>
+    <div id="fol_kpis" class="kpis"></div>
+    <div id="fol_rows"></div>
   </div>
 
   <div id="pane-ord" style="display:none">
@@ -501,6 +512,7 @@ async function boot() {
   markSortHeaders();
   load(1).catch(e => showError('rows', 'Could not load inventory: ' + (e && e.message || e), 'load(1)'));
   stats().catch(e => showError('stats', 'Could not load totals: ' + (e && e.message || e), 'stats()'));
+  loadFollowups().catch(e => showError('fol_rows', 'Could not load unfinished checkouts: ' + (e && e.message || e), 'loadFollowups()'));
   whoami().catch(e => {
     const el = $('whoami');
     if (el) el.innerHTML = '<span class="sub">Shortlist status unavailable</span> <a href="/auth/logout">Sign out</a>';
@@ -517,14 +529,78 @@ async function stats() {
     '<span class="warn"><b>' + s.attr_unknown + '</b> link-attr unknown</span>';
 }
 function showTab(t) {
-  for (const k of ['inv','ord','ana','eng','key']) {
+  for (const k of ['inv','ord','fol','ana','eng','key']) {
     $('pane-' + k).style.display = t === k ? 'block' : 'none';
     $('tab-' + k).className = 'tab' + (t === k ? ' active' : '');
   }
   if (t === 'ord') loadOrders();
+  if (t === 'fol') loadFollowups();
   if (t === 'ana') analytics();
   if (t === 'eng') engine();
   if (t === 'key') keys();
+}
+
+let followups = [];
+async function loadFollowups() {
+  const r = await fetch('/admin/api/checkouts', { headers: hdrs() });
+  if (r.status === 401) { location.href = '/auth/login'; return; }
+  const d = await r.json();
+  followups = d.abandoned || [];
+  const n = d.abandoned_count || followups.length;
+  const tab = $('tab-fol');
+  if (tab) tab.textContent = n ? ('Follow-up (' + n + ')') : 'Follow-up';
+  const kpi = (v, l, hi) => '<div class="kpi' + (hi ? ' hi' : '') + '"><div class="n">' + v + '</div><div class="l">' + l + '</div></div>';
+  if ($('fol_kpis')) $('fol_kpis').innerHTML =
+    kpi(d.started ?? 0, 'Checkouts opened') +
+    kpi(d.paid ?? 0, 'Paid') +
+    kpi(n, 'Did not finish', true) +
+    kpi(dollars(d.abandoned_cents), 'Unpaid $');
+  renderFollowups();
+}
+function followupLabel(status) {
+  if (status === 'expired') return 'Expired — did not pay';
+  if (status === 'in_checkout') return 'Still in Checkout';
+  return 'Did not finish — follow up';
+}
+function followupNote(c) {
+  return [
+    'email: ' + (c.email || ''),
+    'amount: ' + dollars(c.amount_cents),
+    'started: ' + (c.created_at || ''),
+    'status: ' + followupLabel(c.status),
+    c.checkout_url ? 'checkout: ' + c.checkout_url : '',
+  ].filter(Boolean).join('\\n');
+}
+function renderFollowups() {
+  if (!followups.length) {
+    $('fol_rows').innerHTML = '<div class="empty">Nobody left Checkout unfinished.</div>';
+    return;
+  }
+  $('fol_rows').innerHTML = followups.map((c, i) => {
+    const when = (c.created_at || '').slice(0, 16);
+    const email = c.email || '';
+    const pill = c.status === 'expired' ? 'expired' : c.status === 'in_checkout' ? 'open' : 'follow';
+    const mail = 'mailto:' + encodeURIComponent(email)
+      + '?subject=' + encodeURIComponent('Your placement.sh checkout')
+      + '&body=' + encodeURIComponent(followupNote(c));
+    return '<article class="order">'
+      + '<div class="order-top">'
+      + '<span class="pill ' + pill + '">' + esc(followupLabel(c.status)) + '</span>'
+      + '<span class="sub">' + esc(when) + '</span>'
+      + '<span class="price">' + dollars(c.amount_cents) + '</span>'
+      + '</div>'
+      + '<h3>' + (email ? esc(email) : '<span class="sub">no email on this session</span>') + '</h3>'
+      + '<p class="meta">Opened Checkout, did not complete payment.'
+      + (c.available_cents ? ' Credits already on account: ' + dollars(c.available_cents) + '.' : '')
+      + (c.status === 'expired' ? ' The Stripe link has expired — send a new one if they still want to pay.' : '')
+      + '</p>'
+      + '<div class="actions">'
+      + (email ? '<a class="primary" href="' + mail + '">Email</a>' : '')
+      + (email ? '<button type="button" class="copy" data-fol-copy="email" data-i="' + i + '">Copy email</button>' : '')
+      + (c.checkout_url && c.status !== 'expired' ? '<button type="button" class="copy" data-fol-copy="link" data-i="' + i + '">Copy checkout link</button>' : '')
+      + '<button type="button" class="copy" data-fol-copy="note" data-i="' + i + '">Copy follow-up</button>'
+      + '</div></article>';
+  }).join('');
 }
 
 let ordersCache = [];
@@ -630,6 +706,7 @@ async function analytics() {
     kpi(ac.total ?? 0, 'accounts') +
     kpi(wal.funded_accounts ?? fun.funded_accounts ?? 0, 'funded accounts', true) +
     kpi(dollars(wal.available_cents), 'credits on hand') +
+    kpi(fun.abandoned_checkouts ?? 0, 'opened checkout, didn’t pay', true) +
     kpi(ord.in_review ?? 0, 'orders in review', true) +
     kpi((act.zero_result_rate ?? 0) + '%', 'zero-result rate');
 
@@ -637,6 +714,9 @@ async function analytics() {
     ['Anonymous queries', fun.anonymous_queries ?? act.anonymous_queries ?? 0],
     ['Accounts', fun.signups ?? ac.total ?? 0],
     ['Funded', fun.funded_accounts ?? wal.funded_accounts ?? 0],
+    ['Checkouts opened', fun.checkouts_started ?? 0],
+    ['Paid', fun.checkouts_paid ?? 0],
+    ['Did not finish', fun.abandoned_checkouts ?? 0],
     ['Orders', fun.orders ?? ord.total ?? 0],
   ];
   const maxStep = Math.max(1, ...steps.map(s => s[1]));
@@ -824,6 +904,16 @@ document.getElementById('pane-ord').addEventListener('click', (ev) => {
   if (!t || !t.dataset) return;
   if (t.dataset.copyPost != null) { copyPost(parseInt(t.dataset.copyPost, 10)); return; }
   if (t.dataset.copyDetails != null) { copyDetails(parseInt(t.dataset.copyDetails, 10)); }
+});
+
+document.getElementById('pane-fol').addEventListener('click', (ev) => {
+  const t = ev.target;
+  if (!t || !t.dataset || !t.dataset.folCopy) return;
+  const c = followups[parseInt(t.dataset.i, 10)];
+  if (!c) return;
+  if (t.dataset.folCopy === 'email') copyText(c.email || '');
+  else if (t.dataset.folCopy === 'link') copyText(c.checkout_url || '');
+  else copyText(followupNote(c));
 });
 
 document.getElementById('rows').addEventListener('change', (ev) => {

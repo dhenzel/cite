@@ -923,6 +923,53 @@ const SITE_SORT: Record<string, string> = {
 };
 
 
+type CheckoutStatus = 'in_checkout' | 'follow_up' | 'expired';
+
+function parseWhen(value: string | null | undefined): number {
+  if (!value) return NaN;
+  const iso = value.includes('T') ? value : `${value.replace(' ', 'T')}Z`;
+  return Date.parse(iso);
+}
+
+function checkoutStatus(createdAt: string | null, expiresAt: string | null): CheckoutStatus {
+  const exp = parseWhen(expiresAt);
+  if (Number.isFinite(exp) && exp <= Date.now()) return 'expired';
+  const created = parseWhen(createdAt);
+  if (Number.isFinite(created) && Date.now() - created < 30 * 60 * 1000) return 'in_checkout';
+  return 'follow_up';
+}
+
+/** Unpaid Stripe Checkout sessions — people who opened pay and did not finish. */
+async function loadCheckouts(env: Env): Promise<Row> {
+  const totals = await env.DB.prepare(`
+    SELECT COUNT(*) AS started,
+           SUM(CASE WHEN credited_at IS NOT NULL THEN 1 ELSE 0 END) AS paid,
+           SUM(CASE WHEN credited_at IS NULL THEN 1 ELSE 0 END) AS abandoned,
+           COALESCE(SUM(CASE WHEN credited_at IS NULL THEN amount_cents ELSE 0 END), 0) AS abandoned_cents
+    FROM checkout_sessions
+  `).first() as Row;
+  const rows = (await env.DB.prepare(`
+    SELECT c.session_id, c.email, c.amount_cents, c.checkout_url, c.expires_at, c.created_at,
+           COALESCE(a.available_cents, 0) AS available_cents
+    FROM checkout_sessions c
+    LEFT JOIN accounts a ON a.api_key = c.api_key
+    WHERE c.credited_at IS NULL
+    ORDER BY c.created_at DESC
+    LIMIT 80
+  `).all()).results as Row[];
+  const abandoned = rows.map((r) => ({
+    ...r,
+    status: checkoutStatus((r.created_at as string) ?? null, (r.expires_at as string) ?? null),
+  }));
+  return {
+    started: Number(totals?.started) || 0,
+    paid: Number(totals?.paid) || 0,
+    abandoned_count: Number(totals?.abandoned) || 0,
+    abandoned_cents: Number(totals?.abandoned_cents) || 0,
+    abandoned,
+  };
+}
+
 // Analytics shared by /admin/api/analytics (console) and the admin_analytics
 // MCP tool, so both surfaces report identical numbers.
 async function computeAnalytics(env: Env): Promise<Row> {
@@ -1020,15 +1067,20 @@ async function computeAnalytics(env: Env): Promise<Row> {
     const zeroCalls = (byTool as Row[]).reduce((n, t) => n + (Number(t.zero_result_calls) || 0), 0);
     activity.zero_result_rate = queryTotal ? Math.round((1000 * zeroCalls) / queryTotal) / 10 : 0;
     const funded = Number(wallets.funded_accounts) || 0;
+    const checkouts = await loadCheckouts(env);
     return {
       accounts, activity, by_tool: byTool, daily, signups,
       unmet_demand: unmet, top_topics: topTopics,
       free_placements_by_site: freeOrders, inventory_readiness: readiness,
-      wallets, orders, niches,
+      wallets, orders, niches, checkouts,
+      abandoned_checkouts: checkouts.abandoned,
       funnel: {
         anonymous_queries: activity.anonymous_queries ?? 0,
         signups: accounts.total ?? 0,
         funded_accounts: funded,
+        checkouts_started: checkouts.started,
+        checkouts_paid: checkouts.paid,
+        abandoned_checkouts: checkouts.abandoned_count,
         orders: Number(orders.total) || 0,
         free_placements_claimed: accounts.free_placements_claimed ?? 0,
         paid_customers: funded,
@@ -1050,6 +1102,10 @@ async function handleAdminApi(req: Request, env: Env, path: string): Promise<Res
   // demand signal that decides whether the paid path gets built (SPEC §15).
   if (path === '/admin/api/analytics' && req.method === 'GET') {
     return json(await computeAnalytics(env));
+  }
+
+  if (path === '/admin/api/checkouts' && req.method === 'GET') {
+    return json(await loadCheckouts(env));
   }
 
   if (path === '/admin/api/orders' && req.method === 'GET') {
@@ -1475,7 +1531,7 @@ const adminTools = [
   },
   {
     name: 'admin_analytics',
-    description: 'Signups, funded wallets, orders, query volume, top searched topics, unmet demand, inventory mix, and readiness.',
+    description: 'Signups, funded wallets, unfinished Stripe Checkouts, orders, query volume, top searched topics, unmet demand, inventory mix, and readiness.',
     inputSchema: { type: 'object', properties: {} },
   },
 ];

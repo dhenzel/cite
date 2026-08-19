@@ -15,6 +15,12 @@ sq.exec(`
          ('cs_ccc333ddd444', 'hidden-blog.net', 'ed@hidden-blog.net', 'Tech', 50, 1.6, 80, 62, '1k–5k/mo', 'active', 'unknown');
   INSERT INTO site_content (site_id, summary, writes_about) VALUES
     ('cs_aaa111bbb222', 'B2B finance guides.', '["finance","b2b"]');
+  INSERT INTO checkout_sessions (session_id, api_key, email, amount_cents, checkout_url, expires_at, created_at)
+  VALUES ('cs_open_unpaid', 'ak_ghost', 'buyer@example.com', 19500,
+          'https://checkout.stripe.com/c/pay/cs_test_open', datetime('now', '+1 day'), datetime('now', '-2 hours'));
+  INSERT INTO checkout_sessions (session_id, api_key, email, amount_cents, checkout_url, expires_at, created_at, credited_at)
+  VALUES ('cs_paid_done', 'ak_ghost', 'buyer@example.com', 19500,
+          'https://checkout.stripe.com/c/pay/cs_test_paid', datetime('now', '-1 day'), datetime('now', '-1 day'), datetime('now', '-1 day'));
 `);
 
 // minimal D1 shim over better-sqlite3
@@ -67,6 +73,17 @@ r = await f('/admin/api/analytics', { headers: auth });
   assert(ana.accounts && ana.activity && ana.funnel, 'analytics payload has accounts, activity, funnel');
   assert('funded_accounts' in ana.funnel && 'orders' in ana.funnel, 'funnel includes funded accounts and orders');
   assert(Array.isArray(ana.niches) && Array.isArray(ana.daily), 'analytics includes niche mix and daily activity');
+  assert(Array.isArray(ana.abandoned_checkouts) && ana.abandoned_checkouts.length === 1, 'analytics lists unpaid checkouts');
+  assert(ana.abandoned_checkouts[0].email === 'buyer@example.com', 'unpaid checkout includes the buyer email');
+  assert(ana.funnel.abandoned_checkouts === 1 && ana.funnel.checkouts_paid === 1, 'funnel counts abandoned vs paid checkouts');
+}
+r = await f('/admin/api/checkouts', { headers: auth });
+{
+  const ch = await r.json();
+  assert(ch.abandoned_count === 1 && ch.paid === 1 && ch.started === 2, 'checkouts API counts opened vs paid vs unfinished');
+  assert(ch.abandoned[0].email === 'buyer@example.com' && ch.abandoned[0].amount_cents === 19500, 'checkouts API returns the person to follow up');
+  assert(ch.abandoned[0].status === 'follow_up', 'a checkout opened 2h ago is marked follow_up');
+  assert(!('api_key' in ch.abandoned[0]), 'checkouts API does not leak the buyer key');
 }
 
 // markup edit → listed price recompute (100 × 2.0 = 200)
@@ -305,6 +322,7 @@ assert(ad.accounts.total === 1 && ad.activity.queries_total > 0, 'admin_analytic
 assert(Array.isArray(ad.top_topics) && Array.isArray(ad.unmet_demand), 'analytics includes demand views');
 assert(ad.funnel && typeof ad.funnel.funded_accounts === 'number', 'analytics funnel includes funded accounts');
 assert(Array.isArray(ad.niches), 'analytics includes inventory by niche');
+assert(Array.isArray(ad.abandoned_checkouts) && ad.funnel.abandoned_checkouts === 1, 'admin_analytics surfaces unpaid checkouts for follow-up');
 
 console.log('\nall extended checks passed');
 
@@ -481,6 +499,10 @@ r = await fs2('/admin', { headers: { cookie } });
     'inventory columns are sortable');
   assert(consoleHtml.includes('id="a_funnel"') && consoleHtml.includes('id="a_spark"'),
     'analytics has a funnel and 14-day chart');
+  assert(consoleHtml.includes('Follow-up') && consoleHtml.includes('id="pane-fol"'),
+    'console has a Follow-up tab for unfinished checkouts');
+  assert(consoleHtml.includes('Copy follow-up') && consoleHtml.includes('/admin/api/checkouts'),
+    'Follow-up tab can copy a note and loads unpaid checkouts');
 }
 r = await fs2('/admin/api/sites?q=secret', { headers: { cookie } });
 const sitesPayload = await r.json();

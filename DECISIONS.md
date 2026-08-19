@@ -217,6 +217,12 @@ David: the order can stay inside the platform for now; copy it out and send it t
 
 **Console look:** operator console (including sign-in) uses Shortlist.io brand tokens — Inter, navy `#17204B`, mint `#30D2AD`, cyan `#00AADD` — light surfaces, not the previous dark console.
 
+## 2026-08-19 — unfinished Checkouts stay in Follow-up
+
+David: if somebody opens Checkout and does not pull through, we want that visible so we can follow up with that person.
+
+**Decision:** unpaid Stripe Checkout sessions (`checkout_sessions.credited_at IS NULL`) show in `/admin` → Follow-up: email, amount, when they started, whether the Stripe link is still open. Ops copy / mailto from here. No automatic nudge sequence.
+
 ## Still open
 
 1. **Domain + trademark check for "Cite"** (§13.1) — **closed as a brand**: ship as placement.sh. Cite remains the repo/worker name.

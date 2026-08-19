@@ -82,7 +82,10 @@ assert((await r.json()).sites[0].listed_price === 100, 'add site computes listed
 r = await f('/admin/api/stats', { headers: auth });
 assert((await r.json()).sites === 3, 'stats totals');
 r = await f('/admin');
-assert(r.status === 200 && (await r.text()).includes('operator console'), 'admin UI serves');
+{
+  const adminHtml = await r.text();
+  assert(r.status === 200 && adminHtml.includes('operator console'), 'admin UI serves');
+}
 r = await f('/.well-known/oauth-protected-resource');
 assert(r.status === 404, 'oauth discovery probes still 404');
 r = await f('/llms.txt');
@@ -177,6 +180,7 @@ let toolsListRes = await f('/mcp', { method: 'POST', headers: { 'content-type': 
 const toolNames = (await toolsListRes.json()).result.tools.map((t: { name: string }) => t.name);
 assert(!toolNames.includes('claim_free_placement'), 'claim_free_placement is not advertised');
 assert(toolNames.includes('create_campaign') && toolNames.includes('register_account') && toolNames.includes('add_credits'), 'paid booking tools remain');
+assert(toolNames.includes('get_writing_brief') && toolNames.includes('submit_placement'), 'writing brief and submit tools are advertised');
 
 let gone = await call('claim_free_placement', { publisher_id: 'cs_free00self01', target_url: 'https://buyer.test/pricing' });
 assert(gone.error === 'TOOL_REMOVED', 'old clients calling claim_free_placement get TOOL_REMOVED');
@@ -428,7 +432,11 @@ assert(userRow.sub === 'engine-user-1' && userRow.email === 'ops@shortlist.io', 
 
 // session opens the console and the admin API
 r = await fs2('/admin', { headers: { cookie } });
-assert((await r.text()).includes('operator console'), 'session opens the console');
+{
+  const consoleHtml = await r.text();
+  assert(consoleHtml.includes('operator console'), 'session opens the console');
+  assert(consoleHtml.includes('Orders'), 'console has an Orders tab');
+}
 r = await fs2('/admin/api/sites?q=secret', { headers: { cookie } });
 const sitesPayload = await r.json();
 assert(r.status === 200, 'session authorises the admin API');
@@ -743,6 +751,7 @@ console.log('\nall admin-key checks passed');
   assert(/shortlist\.io/i.test(camp.next_step) && /about-us/i.test(camp.next_step), 'payment step still names Shortlist');
 
   const stripeCalls: { url: string; body: string; headers: Record<string, string> }[] = [];
+  let stripeSeq = 0;
   const prevFetch2 = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url;
@@ -753,7 +762,7 @@ console.log('\nall admin-key checks passed');
           ? init.body.toString()
           : '';
       stripeCalls.push({ url, body, headers: (init?.headers ?? {}) as Record<string, string> });
-      const n = stripeCalls.length;
+      const n = ++stripeSeq;
       return new Response(JSON.stringify({
         id: `cs_test_${n}`,
         url: `https://checkout.stripe.com/c/pay/cs_test_${n}`,
@@ -781,18 +790,24 @@ console.log('\nall admin-key checks passed');
   let pr = await mcpPay('register_account', { email: 'payer@customer.test' });
   const payer = await parsePay(pr);
   stripeCalls.length = 0;
-  pr = await mcpPay('add_credits', { amount_usd: 60, idempotency_key: 'pack-1' }, payer.api_key);
+  pr = await mcpPay('add_credits', { amount_usd: 60, idempotency_key: 'exact-60' }, payer.api_key);
   const checkout = await parsePay(pr);
   assert(checkout.checkout_url?.startsWith('https://checkout.stripe.com/'), 'add_credits returns a Checkout URL');
-  assert(checkout.amount_usd === 150, 'amount 60 snaps up to the $150 pack');
+  assert(checkout.amount_usd === 60, 'amount 60 is charged exactly — no pack snap');
+  assert(checkout.amount_cents === 6000, 'exact charge is 6000 cents');
   assert(checkout.session_id === 'cs_test_1', 'session id from Stripe');
   assert(/shortlist\.io\/about-us/.test(checkout.next_step), 'Checkout next_step names the team page');
   assert(stripeCalls[0].body.includes('metadata%5Bproduct%5D=placement.sh') || stripeCalls[0].body.includes('metadata[product]=placement.sh'),
     'Checkout Session is tagged product=placement.sh');
 
-  pr = await mcpPay('add_credits', { amount_usd: 60, idempotency_key: 'pack-1' }, payer.api_key);
+  pr = await mcpPay('add_credits', { amount_usd: 195, idempotency_key: 'exact-195' }, payer.api_key);
+  const ck195 = await parsePay(pr);
+  assert(ck195.amount_usd === 195 && ck195.amount_cents === 19500, 'amount 195 stays $195, not a pack');
+
+  stripeCalls.length = 0;
+  pr = await mcpPay('add_credits', { amount_usd: 60, idempotency_key: 'exact-60' }, payer.api_key);
   const againCk = await parsePay(pr);
-  assert(againCk.session_id === checkout.session_id && stripeCalls.length === 1, 'same idempotency_key reuses the open session');
+  assert(againCk.session_id === checkout.session_id && stripeCalls.length === 0, 'same idempotency_key reuses the open session without a second Stripe call');
 
   pr = await mcpPay('create_campaign', { target_url: 'https://buyer.test', topics: ['finance'], budget: 4000 }, payer.api_key);
   const unpaidCamp = await parsePay(pr);
@@ -806,7 +821,7 @@ console.log('\nall admin-key checks passed');
       object: {
         id: checkout.session_id,
         payment_status: 'paid',
-        amount_total: 15000,
+        amount_total: 6000,
         customer: 'cus_test',
         metadata: { product: 'placement.sh', api_key: payer.api_key, email: 'payer@customer.test' },
         client_reference_id: payer.api_key,
@@ -845,13 +860,111 @@ console.log('\nall admin-key checks passed');
 
   pr = await mcpPay('account_status', {}, payer.api_key);
   st = await parsePay(pr);
-  assert(st.funded === true && st.available_cents === 15000, 'account_status shows the credited pack');
+  assert(st.funded === true && st.available_cents === 6000, 'account_status shows the exact $60 credit');
 
   pr = await mcpPay('create_campaign', { target_url: 'https://buyer.test', topics: ['finance'], budget: 50 }, payer.api_key);
   const fundedCamp = await parsePay(pr);
-  assert(fundedCamp.error === 'FULFILLMENT_NOT_LIVE', 'funded create_campaign does not pretend booking is live');
-  assert(fundedCamp.available_cents === 15000, 'funded campaign response still reports the balance');
-  assert(/do not offer a free listing/i.test(fundedCamp.next_step), 'fulfillment stub still forbids a free listing');
+  assert(fundedCamp.status === 'ready_to_write', 'funded create_campaign asks the agent to write, not fake a booking');
+  assert(fundedCamp.available_cents === 6000, 'funded campaign response still reports the balance');
+  assert(/get_writing_brief/i.test(fundedCamp.next_step) && /do not offer a free listing/i.test(fundedCamp.next_step),
+    'funded next_step points at writing + submit and forbids a free listing');
+
+  let brief = await call('get_writing_brief', { publisher_id: 'cs_aaa111bbb222' });
+  assert(!brief.error, 'get_writing_brief works without an account — looking is free');
+  assert(brief.publisher_id === 'cs_aaa111bbb222' && Array.isArray(brief.ask_the_human), 'brief asks homepage vs article');
+  assert(brief.ask_the_human.some((x: string) => /homepage/i.test(x)), 'brief asks homepage vs a specific article');
+  assert(!JSON.stringify(brief).includes('secret-example'), 'writing brief does not leak the publisher domain');
+
+  brief = await call('get_writing_brief', { publisher_id: 'cs_aaa111bbb222', target_url: 'https://contextengine.com/docs/overview' });
+  assert(brief.link?.kind === 'article' && brief.link?.to === 'https://contextengine.com/docs/overview', 'article target is recorded on the brief');
+  assert((brief.how_to_write || []).some((x: string) => /contextengine\.com\/docs\/overview/.test(x)), 'article brief tells the agent to read and cite that URL');
+
+  let sub = await call('submit_placement', {
+    publisher_id: 'cs_aaa111bbb222',
+    target_url: 'https://contextengine.com/docs/overview',
+    title: 'Too short',
+    body: 'Not enough words. https://contextengine.com/docs/overview',
+  });
+  assert(sub.error === 'ACCOUNT_REQUIRED', 'submit_placement without an account asks for email');
+
+  sub = await call('submit_placement', {
+    publisher_id: 'cs_aaa111bbb222',
+    target_url: 'https://contextengine.com/docs/overview',
+    title: 'Too short',
+    body: 'Not enough words. https://contextengine.com/docs/overview',
+  }, payer.api_key);
+  assert(sub.error === 'WORD_COUNT_LOW', 'short posts are rejected so the agent can rewrite in-thread');
+
+  const longBody = (url: string) => {
+    const sentence = 'Operators keep a written record of decisions so the next person can pick up the work. ';
+    return `# Why durable context matters\n\nThe source is ${url}.\n\n` + sentence.repeat(80);
+  };
+
+  sub = await mcpPay('submit_placement', {
+    publisher_id: 'cs_aaa111bbb222',
+    target_url: 'https://contextengine.com/docs/overview',
+    anchor_text: 'Context Engine',
+    title: 'Why teams need a durable record of work',
+    body: longBody('https://contextengine.com/docs/overview'),
+    idempotency_key: 'post-1',
+  }, payer.api_key).then(parsePay);
+  assert(sub.error === 'INSUFFICIENT_CREDIT' && sub.checkout_url?.startsWith('https://checkout.stripe.com/'),
+    'submit_placement returns Checkout for the shortfall when credits do not cover listed_price');
+  assert(sub.required_cents === 24000, 'listed_price after admin markup 3× is $240');
+
+  stripeCalls.length = 0;
+  pr = await mcpPay('add_credits', { amount_usd: 180, idempotency_key: 'cover-240' }, payer.api_key);
+  const cover = await parsePay(pr);
+  assert(cover.amount_usd === 180, 'shortfall checkout is the exact remaining $180');
+  const event2 = {
+    type: 'checkout.session.completed',
+    data: {
+      object: {
+        id: cover.session_id,
+        payment_status: 'paid',
+        amount_total: 18000,
+        customer: 'cus_test',
+        metadata: { product: 'placement.sh', api_key: payer.api_key, email: 'payer@customer.test' },
+        client_reference_id: payer.api_key,
+      },
+    },
+  };
+  const payload2 = JSON.stringify(event2);
+  const mac3 = new Uint8Array(await crypto.subtle.sign('HMAC', key, enc.encode(`${t}.${payload2}`)));
+  const hex3 = [...mac3].map((b) => b.toString(16).padStart(2, '0')).join('');
+  r = await worker.fetch(new Request('https://cite.test/webhooks/stripe', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'stripe-signature': `t=${t},v1=${hex3}` },
+    body: payload2,
+  }), stripeEnv);
+  assert((await r.json()).credited === true, 'shortfall webhook credits the wallet');
+
+  sub = await mcpPay('submit_placement', {
+    publisher_id: 'cs_aaa111bbb222',
+    target_url: 'https://contextengine.com/docs/overview',
+    anchor_text: 'Context Engine',
+    title: 'Why teams need a durable record of work',
+    body: longBody('https://contextengine.com/docs/overview'),
+    idempotency_key: 'post-1',
+  }, payer.api_key).then(parsePay);
+  assert(typeof sub.order_id === 'string' && sub.state === 'human_review', 'accepted post is stored for ops');
+  assert(sub.held_cents === 24000 && sub.word_count >= 700, 'listed_price is held and word count is recorded');
+  assert(!JSON.stringify(sub).includes('secret-example'), 'buyer submit response does not reveal the domain');
+
+  const againPost = await mcpPay('submit_placement', {
+    publisher_id: 'cs_aaa111bbb222',
+    target_url: 'https://contextengine.com/docs/overview',
+    title: 'Why teams need a durable record of work',
+    body: longBody('https://contextengine.com/docs/overview'),
+    idempotency_key: 'post-1',
+  }, payer.api_key).then(parsePay);
+  assert(againPost.order_id === sub.order_id, 'same idempotency_key does not create a second order');
+
+  r = await worker.fetch(new Request('https://cite.test/admin/api/orders', { headers: auth }), stripeEnv);
+  const orders = await r.json();
+  assert(r.status === 200 && orders.orders?.[0]?.domain === 'secret-example.com', 'ops Orders API shows the publisher domain');
+  assert(orders.orders[0].buyer_email === 'payer@customer.test', 'ops Orders API shows the buyer');
+  assert(orders.orders[0].title.includes('durable record'), 'ops Orders API shows the submitted title');
 
   const other = JSON.stringify({
     type: 'checkout.session.completed',

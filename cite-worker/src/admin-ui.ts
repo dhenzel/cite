@@ -156,6 +156,7 @@ export const ADMIN_HTML = `<!doctype html>
   </header>
   <div class="tabs">
     <button id="tab-inv" class="tab active" onclick="showTab('inv')">Inventory</button>
+    <button id="tab-ord" class="tab" onclick="showTab('ord')">Orders</button>
     <button id="tab-ana" class="tab" onclick="showTab('ana')">Analytics</button>
     <button id="tab-eng" class="tab" onclick="showTab('eng')">Shortlist</button>
     <button id="tab-key" class="tab" onclick="showTab('key')">Connect</button>
@@ -209,6 +210,11 @@ export const ADMIN_HTML = `<!doctype html>
       <section><h3>Free placements claimed</h3><div id="a_free"></div></section>
     </div>
     <section><h3>Inventory readiness</h3><div id="a_ready"></div></section>
+  </div>
+
+  <div id="pane-ord" style="display:none">
+    <p class="prose sub">Finished posts agents submitted. Domain is for operators only — never send it to the buyer.</p>
+    <div id="ord_rows"></div>
   </div>
 
   <div id="pane-eng" style="display:none">
@@ -435,13 +441,33 @@ async function stats() {
     '<span class="warn"><b>' + s.attr_unknown + '</b> link-attr unknown</span>';
 }
 function showTab(t) {
-  for (const k of ['inv','ana','eng','key']) {
+  for (const k of ['inv','ord','ana','eng','key']) {
     $('pane-' + k).style.display = t === k ? 'block' : 'none';
     $('tab-' + k).className = 'tab' + (t === k ? ' active' : '');
   }
+  if (t === 'ord') loadOrders();
   if (t === 'ana') analytics();
   if (t === 'eng') engine();
   if (t === 'key') keys();
+}
+
+async function loadOrders() {
+  const r = await fetch('/admin/api/orders', { headers: hdrs() });
+  if (r.status === 401) { location.href = '/auth/login'; return; }
+  const d = await r.json();
+  $('ord_rows').innerHTML = tbl(
+    [{t:'When'},{t:'State'},{t:'Buyer'},{t:'Domain'},{t:'Title'},{t:'Target'},{t:'$',n:1},{t:'Words',n:1}],
+    (d.orders||[]).map(o => [
+      esc((o.created_at||'').slice(0,16)),
+      esc(o.state),
+      esc(o.buyer_email||''),
+      esc(o.domain || o.publisher_id),
+      esc(o.title||''),
+      esc(o.target_url||''),
+      ((o.listed_price_cents||0)/100).toFixed(0),
+      o.word_count||''
+    ]),
+    'No submitted posts yet.');
 }
 
 const tbl = (headers, rows, empty) => rows.length

@@ -3,11 +3,11 @@
 Cloudflare Worker serving:
 
 - **`GET /`** — minimal landing page (HTML for browsers, plaintext for agents).
-- **`POST /mcp`** — public MCP (Streamable HTTP): `help`, `estimate`, `search_publishers`, `get_publisher`, `inventory_stats`, `register_account`, `add_credits`, `account_status`, `create_campaign`. Paid inventory only.
+- **`POST /mcp`** — public MCP (Streamable HTTP): `help`, `estimate`, `search_publishers`, `get_publisher`, `inventory_stats`, `register_account`, `add_credits`, `account_status`, `create_campaign`, `get_writing_brief`, `submit_placement`. Paid inventory only.
 - **`GET /paid`** — post-Checkout landing (“credits added — go back to your agent and say paid”).
 - **`POST /webhooks/stripe`** — credits the wallet on `checkout.session.completed` when `metadata.product=placement.sh`.
 - **`GET /llms.txt`**, **`GET /.well-known/mcp/server.json`** — agent discovery.
-- **`/admin`** — operator console: full inventory with seller price, markup, listed price and margin. Guarded by Shortlist SSO / `ADMIN_TOKEN`.
+- **`/admin`** — operator console: inventory plus an **Orders** tab for agent-submitted posts (domain visible to operators only). Guarded by Shortlist SSO / `ADMIN_TOKEN`.
 
 Public language is **publisher / placement**, never site. D1 table names stay `sites` so the live catalog does not need a migration.
 
@@ -54,6 +54,7 @@ Prepaid credits use **Shortlist’s existing Stripe** (restricted key). Tag is `
 
 ```bash
 npx wrangler d1 execute cite-v0 --remote --file=migrations/005_wallet.sql
+npx wrangler d1 execute cite-v0 --remote --file=migrations/006_orders.sql
 npx wrangler secret put STRIPE_SECRET_KEY          # start sk_test_ / rk_test_; later live restricted
 npx wrangler secret put STRIPE_WEBHOOK_SECRET      # from the webhook endpoint (test mode has its own secret)
 npx wrangler deploy --keep-vars
@@ -68,7 +69,7 @@ Stripe Dashboard (same Shortlist account):
 - Success URL (already in code): `https://placement.sh/paid?session_id={CHECKOUT_SESSION_ID}`
 - Checkout branding / statement descriptor: **PLACEMENT.SH** (not Shortlist)
 
-Test with a $50 pack in Stripe **test mode** first, then one internal live $50 pack, then leave live keys in place.
+Charge the exact listed_price (for example $195). No credit packs in v1. Test mode first, then one internal live payment, then leave live keys in place.
 
 ## Tests
 

@@ -107,7 +107,7 @@ assert(home.includes('https://placement.sh/mcp') && !home.includes('workers.dev'
 assert(home.includes('https://shortlist.io/') && home.includes('https://shortlist.io/about-us/'), 'homepage links Shortlist and the team page');
 assert(/Who runs this/.test(home) && /A <a href="https:\/\/shortlist\.io\/">Shortlist<\/a> product/.test(home) && /since 2018/.test(home), 'homepage explains Shortlist as the operator');
 assert(home.includes('data-client="hermes"') && home.includes('hermes mcp add placement --url'), 'Hermes is an add-to-agent option');
-assert(!/claim a free/i.test(home) && /no free listings/i.test(home), 'homepage says there are no free listings');
+assert(!/free listing/i.test(home), 'homepage does not talk about free listings');
 assert(!home.includes('window.open') && !home.includes('cursor://') && !/https:\/\/(claude\.ai|chatgpt\.com|grok\.com)\//.test(home), 'agent buttons stay on-page and do not deep-link out');
 assert(home.includes('data-client="cursor"') && !home.includes('<a class="btn"'), 'Cursor is a button like the others, not an outbound link');
 r = await worker.fetch(new Request('https://www.placement.sh/llms.txt'), env);

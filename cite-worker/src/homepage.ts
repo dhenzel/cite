@@ -183,7 +183,7 @@ export const homepageHtml = (origin: string): string => {
 <main>
   <h1>placement.sh</h1>
   <p class="lede">Buy publisher placements so a URL gets cited.</p>
-  <p class="sub">You (or your agent) pick a URL, topics, and a budget. placement.sh books paid editorial placements on real publisher sites. That is bought inventory — not a guest-post mill you run yourself, and not a free listing. Publisher domains stay hidden until a placement is delivered. Paid placements are live and indexed at T+30, or refunded.</p>
+  <p class="sub">You (or your agent) pick a URL, topics, and a budget. placement.sh books paid editorial placements on real publisher sites. That is bought inventory — not a guest-post mill you run yourself. Publisher domains stay hidden until a placement is delivered. Paid placements are live and indexed at T+30, or refunded.</p>
 
   <div class="who">
     <p><strong>Who runs this.</strong> placement.sh is a <a href="${esc(OPERATOR_URL)}">${esc(OPERATOR_NAME)}</a> product. Shortlist has bought publisher placements since 2018 — a named team, not a new domain with a Stripe form.</p>
@@ -196,7 +196,7 @@ export const homepageHtml = (origin: string): string => {
   <ol>
     <li><strong>Add this MCP</strong> to Claude, ChatGPT, Grok, Kimi, Cursor, Hermes, or any agent that speaks MCP.</li>
     <li><strong>Ask the agent to estimate</strong> — URL, topics, budget. No card required to look. The agent should tell you this is Shortlist before you pay.</li>
-    <li><strong>To buy</strong>, the agent asks for a contact email, then prepaid credits. There are no free listings.</li>
+    <li><strong>To buy</strong>, the agent asks for a contact email, then prepaid credits.</li>
   </ol>
 
   <h2>Add to your agent</h2>
@@ -231,7 +231,7 @@ export const homepageHtml = (origin: string): string => {
 <script>
 (function () {
   var MCP = ${JSON.stringify(mcp)};
-  var ASK = "Then tell it: Get https://example.com cited on [topics], budget $X. It should call estimate first, then ask for your email to register. There are no free listings.";
+  var ASK = "Then tell it: Get https://example.com cited on [topics], budget $X. It should call estimate first, then ask for your email to register.";
   var guides = {
     claude: {
       title: "In Claude",

@@ -72,31 +72,17 @@ const json = (payload: unknown, status = 200) =>
   new Response(JSON.stringify(payload), { status, headers: { 'content-type': 'application/json', ...CORS } });
 
 // ---------- public field whitelist (blind placements) ----------
-// Metrics disclosure ladder (SPEC §5, revised 2026-08-17):
-//   exact Ahrefs DR — permitted by Ahrefs' API rules when shown to the end user,
-//   attributed, and not renamed. Measured fingerprinting risk: DR + niche
-//   identifies 2.9% of the catalog. Adding exact DA/TF/CF takes that to 93.6%,
-//   so those ship as BANDS only. Exact DA/TF/CF/traffic never leave the console.
+// Metrics (2026-08-19): buyer surface is Ahrefs-only. Exact Domain Rating —
+// permitted by Ahrefs' API rules when shown to the end user, attributed, and
+// not renamed. Organic traffic stays a band (exact traffic uniquely IDs a
+// site). Moz DA / Majestic TF/CF never leave the buyer MCP — those were the
+// fingerprinting combo (DR+DA+TF+CF+niche = 93.6% of the catalog; DR+niche
+// = 2.9%). Legacy da/tf/cf columns may still sit in D1 for operators.
 type Row = Record<string, unknown>;
 
-const band10 = (v: unknown, label: string): string | undefined => {
-  const n = typeof v === 'number' ? v : null;
-  if (n === null) return undefined;
-  const lo = Math.floor(n / 10) * 10;
-  return `${label} ${lo}–${lo + 9}`;
-};
-const trustBand = (tf: unknown, cf: unknown): string | undefined => {
-  if (typeof tf !== 'number' || typeof cf !== 'number' || cf <= 0) return undefined;
-  const ratio = tf / cf;
-  if (ratio >= 0.8) return 'strong';
-  if (ratio >= 0.5) return 'healthy';
-  if (ratio >= 0.3) return 'weak';
-  return 'poor';
-};
 const scoreComponents = (r: Row) => ({
   authority: typeof r.dr === 'number' ? Math.round(r.dr) : undefined,
   traffic: typeof r.traffic === 'number' ? Math.min(100, Math.round(20 * Math.log10(r.traffic + 1))) : undefined,
-  trust: trustBand(r.tf, r.cf),
   spam_flag: typeof r.spam === 'number' && r.spam > 0 ? true : false,
 });
 
@@ -120,8 +106,6 @@ const pub = (r: Row, detail = false) => {
     subniche: r.subniche || undefined,
     // Ahrefs requires the metric keep its name and carry attribution.
     ahrefs_domain_rating: r.dr ?? undefined,
-    da_band: band10(r.da, 'DA'),
-    trust_ratio: trustBand(r.tf, r.cf),
     traffic_band: r.traffic_band,
     listed_price: r.listed_price,
     link_attribute: r.link_attribute ?? 'unknown',
@@ -137,7 +121,7 @@ const pub = (r: Row, detail = false) => {
     how_this_works: 'Paid placement fulfilled by placement.sh. Prepaid credits required to book.',
     content_summary: r.summary ?? undefined,
     recent_post_titles: r.recent_titles ? JSON.parse(r.recent_titles as string) : undefined,
-    metrics_attribution: 'Domain Rating (DR) via Ahrefs. DA shown as a band; traffic as a band. Exact vendor values are not redistributed.',
+    metrics_attribution: 'Domain Rating (DR) via Ahrefs. Organic traffic shown as a band. Moz DA and Majestic TF/CF are not shown to buyers.',
     note: 'Publisher domain is revealed as published_url when the placement is delivered (blind placements).',
   };
 };
@@ -1369,7 +1353,7 @@ const adminTools = [
   },
   {
     name: 'admin_update_metrics',
-    description: 'Push refreshed SEO metrics for a publisher (dr, da, tf, cf, traffic, spam) and recompute its Placement Score and traffic band. Use after an Ahrefs/Moz refresh.',
+    description: 'Push refreshed SEO metrics for a publisher (dr, traffic, spam; optional legacy da/tf/cf) and recompute its Placement Score and traffic band. Going forward, refresh from Ahrefs.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1527,6 +1511,7 @@ async function runAdminTool(env: Env, req: Request, name: string, args: Row): Pr
         traffic: typeof args.traffic === 'number' ? args.traffic : (site.traffic as number | null),
         spam: typeof args.spam === 'number' ? args.spam : (site.spam as number | null),
       };
+      // Sheet-era weights (DA + TF/CF). Re-fit to Ahrefs-only when metrics refresh.
       const trafficPts = Math.min(100, 20 * Math.log10((m.traffic ?? 0) + 1));
       const ratio = m.cf && m.cf > 0 ? Math.min(1, (m.tf ?? 0) / m.cf) : 0;
       const score = Math.max(0, Math.min(100, Math.round(

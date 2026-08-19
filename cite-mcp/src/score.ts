@@ -2,8 +2,11 @@
 // API response (SPEC §5). Weights are a first guess to be re-fit once lift
 // data exists; keep the formula in this one place.
 //
-//   40% Ahrefs DR, 20% Moz DA, 30% traffic (log-scaled), 10% TrustFlow/CitationFlow
-//   ratio, minus a spam penalty. Clamped to 0–100.
+//   Current (imported sheet): 40% Ahrefs DR, 20% Moz DA, 30% traffic (log-scaled),
+//   10% TrustFlow/CitationFlow ratio, minus a spam penalty. Clamped to 0–100.
+//
+//   Going forward (2026-08-19): Ahrefs only. Re-fit this to DR + Ahrefs organic
+//   traffic (+ spam) when metrics are refreshed; do not keep pulling Moz/Majestic.
 
 export interface RawMetrics {
   dr: number | null;

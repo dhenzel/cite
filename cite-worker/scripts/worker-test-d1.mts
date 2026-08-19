@@ -155,10 +155,11 @@ const call = async (tool: string, args: Record<string, unknown> = {}, key?: stri
 // metrics ladder
 let g = await call('get_publisher', { publisher_id: 'cs_aaa111bbb222' });
 assert(g.ahrefs_domain_rating === 88, 'exact Ahrefs DR exposed');
-assert(g.da_band === 'DA 50–59', `DA banded not exact (got ${g.da_band})`);
-assert(g.trust_ratio === 'strong', `TF/CF exposed as a band (got ${g.trust_ratio})`);
-assert(!('da' in g) && !('tf' in g) && !('traffic' in g), 'exact DA/TF/traffic absent from public payload');
+assert(!('da_band' in g) && !('trust_ratio' in g) && !('da' in g) && !('tf' in g) && !('cf' in g),
+  'Moz DA / Majestic TF/CF absent from buyer payload');
+assert(!('traffic' in g), 'exact traffic absent from public payload');
 assert(typeof g.metrics_attribution === 'string', 'Ahrefs attribution present');
+assert(!g.score_components || !('trust' in g.score_components), 'no Majestic trust on buyer score_components');
 assert(g.placement_score === 88 && !('cite_score' in g) && !('site_id' in g), 'public fields use publisher/placement_score');
 assert(!JSON.stringify(g).includes('secret-example'), 'domain still blind in get_publisher');
 assert(!('cost_type' in g) && !('acquisition_mode' in g), 'buyer payload does not advertise free/self-serve modes');

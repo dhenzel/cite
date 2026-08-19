@@ -71,7 +71,7 @@ David: "we need a backend where we can administrate the pages we offer… and I 
 
 Result: **exact Ahrefs DR** (labeled, attributed, never renamed) + **bands** for DA and TF/CF + traffic band + decomposed score components. Exact DA/TF/CF/traffic stay in the console.
 
-**Access tiers (SPEC §17, revised 2026-08-19).** Looking is unlimited with no account. `register_account({email})` is only so we can take payment. Funded via Stripe (not enabled yet). Every call logged to `query_log`.
+**Access tiers (SPEC §17, revised 2026-08-19).** Looking is unlimited with no account. `register_account({email})` is only so we can take payment. Funded via Stripe Checkout on Shortlist’s existing account (wallet + webhook; publisher booking still `FULFILLMENT_NOT_LIVE`). Every call logged to `query_log`.
 
 **Operator MCP (SPEC §16).** `/admin/mcp` exposes the back office as tools for the team — bulk updates dry-run by default. Auth via `ADMIN_TOKEN` header or `/admin/mcp/<token>` for clients that cannot send headers.
 
@@ -158,6 +158,12 @@ David: an agent should query as much as it wants so the human can figure out wha
 David: customers and people who sign up should get mail from `placement@shortlist.io`.
 
 **Decision:** buyer transactional From/Reply-To is `placement.sh <placement@shortlist.io>` (Shortlist Google Workspace). The Worker sends `account.created` on a *new* `register_account` (welcome to the buyer + ops ping to that mailbox and `CITE_ADMIN_EMAILS`). Re-register of an existing email does not resend. Transport is Gmail API secrets, else Resend. No Cloudflare Email Sending on placement.sh, no Email Routing MX on the apex. Mail failure never blocks MCP. API keys and publisher domains stay out of the mail.
+
+## 2026-08-19 — prepaid Stripe Checkout on Shortlist’s Stripe
+
+David: signup mail works; put the payment path live.
+
+**Decision:** Worker implements wallet + Stripe Checkout on **Shortlist’s existing Stripe**. `add_credits` returns a Checkout URL. Packs $50 / $150 / $500 / $2,000 (snap up). Webhook `POST /webhooks/stripe` credits `available_cents` only when `metadata.product=placement.sh`. Landing page `GET /paid`. `create_campaign` with no credits returns `INSUFFICIENT_CREDIT` plus that Checkout payload. With credits, it does **not** fake a booking (`FULFILLMENT_NOT_LIVE`) until submit/allocator ships. No new Stripe account. Restricted key. Test $50 pack before flipping to live keys.
 
 ## Still open
 

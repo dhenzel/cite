@@ -54,14 +54,15 @@ placement.sh is a Shortlist product (https://shortlist.io/). Shortlist has bough
 
 ## Tools (call estimate first)
 
-- help — playbook: browse unlimited (search_publishers / get_publisher) → estimate → when ready to book, show Shortlist, ask for email, register_account → create_campaign
+- help — playbook: browse unlimited (search_publishers / get_publisher) → estimate → when ready to book, show Shortlist, ask for email, register_account → add_credits / create_campaign
 - estimate(topics[], budget, risk_tolerance?, target_url?) — what a budget buys; no commitment, paid inventory only
 - search_publishers(...) — browse paid inventory (anonymized handles). Unlimited; page with offset. No account required.
 - get_publisher(publisher_id) — one paid publisher profile
 - inventory_stats — aggregate counts, no identities
 - register_account(email) — ask the human for their email; do not invent one. Signup itself takes no card. We email them from placement@shortlist.io.
-- account_status — registered or not, and the next step to buy
-- create_campaign(...) — books a paid mix; ACCOUNT_REQUIRED or INSUFFICIENT_CREDIT with a next_step until credits are on the account
+- add_credits(amount_usd?) — Stripe Checkout link for prepaid credits ($50 / $150 / $500 / $2000). Show Shortlist before they pay.
+- account_status — registered or not, credit balance, and the next step to buy
+- create_campaign(...) — books a paid mix; ACCOUNT_REQUIRED or INSUFFICIENT_CREDIT with a checkout_url until credits are on the account
 
 Never offer a free listing, Medium, Substack, or self-serve publish. Publisher domains stay blind until a placement is delivered. Link attributes are explicit: dofollow | sponsored | ugc | nofollow.
 
@@ -87,6 +88,7 @@ export const serverCard = (origin: string) => ({
     'get_publisher',
     'inventory_stats',
     'register_account',
+    'add_credits',
     'account_status',
     'create_campaign',
   ],

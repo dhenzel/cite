@@ -71,7 +71,7 @@ David: "we need a backend where we can administrate the pages we offer… and I 
 
 Result: **exact Ahrefs DR** (labeled, attributed, never renamed) + **bands** for DA and TF/CF + traffic band + decomposed score components. Exact DA/TF/CF/traffic stay in the console.
 
-**Access tiers (SPEC §17).** anonymous (10 results) → `register_account({email})`, agent-driven and instant (50 results, 10 free placements) → funded via Stripe (not enabled). Every call logged to `query_log`.
+**Access tiers (SPEC §17, revised 2026-08-19).** Looking is unlimited with no account. `register_account({email})` is only so we can take payment. Funded via Stripe (not enabled yet). Every call logged to `query_log`.
 
 **Operator MCP (SPEC §16).** `/admin/mcp` exposes the back office as tools for the team — bulk updates dry-run by default. Auth via `ADMIN_TOKEN` header or `/admin/mcp/<token>` for clients that cannot send headers.
 
@@ -147,7 +147,11 @@ Paying humans land on a site with no company, no people, no aged domain. That re
 - **Publisher outreach unchanged:** named Shortlist human, never From placement.sh.
 - **Hermes** is a first-class add-to-agent option on the homepage (`hermes mcp add placement --url …`).
 
-This supersedes the 2026-08-13 “do NOT put Shortlist in the footer” call, and the 2026-08-18 “agent surfaces stay quiet” line. Concealment still applies to **inventory**. The paying human is told who operates placement.sh.
+## 2026-08-19 — looking is unlimited; pay only to submit
+
+David: an agent should query as much as it wants so the human can figure out what to write. No result cap. Smooth, natural, guided by MCP. Payment only when they submit.
+
+**Decision:** drop the anonymous-10 / registered-50 search caps. `search_publishers` pages (`limit` default 50, max 200, `offset` for the rest) so a 9k catalog does not dump into one MCP turn. `help` and initialize tell the agent to keep browsing, then show Shortlist, then ask for email, then pay. Registering does not unlock extra results — it unlocks booking.
 
 ## Still open
 

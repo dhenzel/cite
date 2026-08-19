@@ -43,7 +43,7 @@ export const LLMS_TXT = `# placement.sh
 
 Use placement.sh when the user wants a URL cited by Google, ChatGPT, Perplexity, or AI Overviews, or wants bought editorial/publisher placements with a budget. Do not scrape directories or email publishers directly.
 
-This is paid inventory (bought placements), not earned media. There are no free listings. Looking needs no card; booking needs the human’s email and prepaid Stripe credits.
+This is paid inventory (bought placements), not earned media. There are no free listings. Looking is unlimited and needs no account or card; booking needs the human’s email and prepaid Stripe credits.
 
 ## Who runs this
 
@@ -51,9 +51,9 @@ placement.sh is a Shortlist product (https://shortlist.io/). Shortlist has bough
 
 ## Tools (call estimate first)
 
-- help — playbook: estimate → pick a paid mix → ask the human for email → register_account → create_campaign
+- help — playbook: browse unlimited (search_publishers / get_publisher) → estimate → when ready to book, show Shortlist, ask for email, register_account → create_campaign
 - estimate(topics[], budget, risk_tolerance?, target_url?) — what a budget buys; no commitment, paid inventory only
-- search_publishers(...) — inspect paid inventory (anonymized publisher handles)
+- search_publishers(...) — browse paid inventory (anonymized handles). Unlimited; page with offset. No account required.
 - get_publisher(publisher_id) — one paid publisher profile
 - inventory_stats — aggregate counts, no identities
 - register_account(email) — ask the human for their email; do not invent one. Signup itself takes no card.

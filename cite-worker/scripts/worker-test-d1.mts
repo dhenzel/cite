@@ -180,10 +180,15 @@ assert(toolNames.includes('create_campaign') && toolNames.includes('register_acc
 let gone = await call('claim_free_placement', { publisher_id: 'cs_free00self01', target_url: 'https://buyer.test/pricing' });
 assert(gone.error === 'TOOL_REMOVED', 'old clients calling claim_free_placement get TOOL_REMOVED');
 
-// anonymous cap
+// looking is unlimited — no anonymous/account result cap
 s = await call('search_publishers', {});
-assert(s.result_limit === 10, `anonymous result cap is 10 (got ${s.result_limit})`);
-assert(typeof s.next_step === 'string' && /register_account/.test(s.next_step), 'anonymous search tells the agent to register, not to claim free');
+assert(s.looking === 'unlimited' && !('result_limit' in s), 'search is unlimited; no result_limit cap');
+assert(typeof s.total_matched === 'number' && s.offset === 0, 'search reports total_matched and offset');
+assert(typeof s.next_step === 'string' && /book/i.test(s.next_step), 'search still explains how booking works');
+s = await call('search_publishers', { limit: 1 });
+assert(s.result_count === 1 && s.next_offset === 1, 'limit 1 pages; next_offset is 1 when more remain');
+s = await call('search_publishers', { limit: 1, offset: 1 });
+assert(s.offset === 1 && s.publishers[0].publisher_id !== undefined, 'offset pages through the catalog');
 
 // accounts
 let a = await call('register_account', { email: 'not-an-email' });
@@ -192,18 +197,20 @@ a = await call('register_account', { email: 'Agent@Example.com' });
 assert(typeof a.api_key === 'string' && a.api_key.startsWith('ck_'), 'register_account mints a key');
 assert(a.tier === 'registered', 'new accounts are registered, not a free-placement tier');
 assert(!JSON.stringify(a).includes('free placement'), 'register_account does not promise free placements');
+assert(!/capped at 10|50 results/i.test(JSON.stringify(a)), 'register_account does not sell a search-cap upgrade');
 const apiKey = a.api_key;
 const again = await call('register_account', { email: 'agent@example.com' });
 assert(again.api_key === apiKey, 'same email returns the same key (case-insensitive)');
 s = await call('search_publishers', {}, apiKey);
-assert(s.result_limit === 50, 'account key raises result cap to 50');
+assert(s.looking === 'unlimited', 'account key does not change looking — already unlimited');
 let st = await call('account_status', {}, apiKey);
-assert(st.tier === 'registered' && !('free_placements_remaining' in st), 'account_status has no free-placement quota');
+assert(st.tier === 'registered' && st.looking === 'unlimited' && !('free_placements_remaining' in st), 'account_status has no free-placement quota and unlimited looking');
 
 let h = await call('help');
 assert(h.call_first === 'estimate' && h.product === 'placement.sh', 'help orients agents');
 assert(Array.isArray(h.never) && h.never.some((x: string) => /free listing/i.test(x)), 'help forbids offering free listings');
 assert(h.playbook.some((x: string) => /email/i.test(x)), 'help says to ask the human for an email');
+assert(h.playbook.some((x: string) => /unlimited/i.test(x)), 'help says looking is unlimited');
 assert(h.who_runs_this?.operator === 'Shortlist' && /shortlist\.io\/about-us/.test(h.who_runs_this.team), 'help names Shortlist and the team page');
 assert(h.playbook.some((x: string) => /look us up/i.test(x)), 'help tells the agent to show Shortlist before the human pays');
 

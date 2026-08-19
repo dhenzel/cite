@@ -289,9 +289,7 @@ The gap that remains — and that Cite must own: CrowdReply's writes sit **behin
 
 **Buyer mail From `@shortlist.io`.** Do not send buyer transactional mail from `hello@placement.sh` in v1.
 
-**Publisher outreach is still Shortlist humans**, never From placement.sh (§8). Inventory stays blind until delivery (§11).
-
-The 2026-08-13 “do NOT put Shortlist in the footer” line is superseded for the human site only. Concealment of *inventory* is unchanged.
+The 2026-08-13 “do NOT put Shortlist in the footer” line is superseded. Concealment of *inventory* is unchanged. The paying human is told who operates placement.sh.
 
 Note (2026-08-13): placement.sh is **not** Shortlist's repositioning — it is a separate project that feeds demand into Shortlist's publisher inventory. Shortlist's own positioning remains an open, independent question.
 
@@ -362,15 +360,15 @@ The public tools (`estimate`, `search_publishers`, `get_publisher`, `inventory_s
 
 ### Access tiers
 
-Looking is still free (no card). Buying is not.
+Looking is free and **unlimited**. Buying is not. No result cap, no account required to search.
 
-| tier | how you get it | result cap | what you can do |
+| tier | how you get it | looking | what you can do |
 |---|---|---|---|
-| anonymous | nothing | 10 per search | search, inspect, estimate |
-| registered | `register_account({email})` — agent asks the human; do not invent an email | 50 per search | same, plus a key for later calls |
-| funded | prepaid Stripe credits | 50 | + `create_campaign` / submit |
+| anyone | nothing | unlimited (page with `offset`) | search, inspect, estimate — figure out what to write |
+| registered | `register_account({email})` — agent asks the human; do not invent an email | unlimited | same, plus a key so we can take payment |
+| funded | prepaid Stripe credits | unlimited | + `create_campaign` / submit |
 
-The ladder is still frictionless at the point an agent wants to buy: the agent asks the human for an email, creates the account, then follows `next_step` on `INSUFFICIENT_CREDIT`. Every call is written to `query_log`.
+The agent should let the human browse until they know what they want. Email and credits only when they submit. On `INSUFFICIENT_CREDIT`, follow `next_step`. Every call is written to `query_log`.
 
 ### Operator MCP
 

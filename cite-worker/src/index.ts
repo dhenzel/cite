@@ -905,6 +905,22 @@ const EDITABLE = ['seller_price', 'markup', 'status', 'link_attribute', 'max_lin
   'turnaround_sla_days', 'niche', 'subniche', 'note', 'contact_name', 'contact_email',
   'acquisition_mode', 'cost_type', 'requires_reciprocal_link', 'agent_instructions'] as const;
 const ACQUISITION_MODES = ['paid_placement', 'self_serve', 'apply_editorial', 'link_exchange', 'unavailable'];
+// Whitelist only — interpolated into ORDER BY. Never pass the raw query string.
+const SITE_SORT: Record<string, string> = {
+  domain: 'domain',
+  niche: 'niche',
+  cite_score: 'cite_score',
+  dr: 'dr',
+  traffic: 'traffic',
+  seller_price: 'seller_price',
+  markup: 'markup',
+  listed_price: 'listed_price',
+  margin: '(listed_price - seller_price)',
+  acquisition_mode: 'acquisition_mode',
+  link_attribute: 'link_attribute',
+  max_links_per_post: 'max_links_per_post',
+  status: 'status',
+};
 
 
 // Analytics shared by /admin/api/analytics (console) and the admin_analytics
@@ -940,8 +956,31 @@ async function computeAnalytics(env: Env): Promise<Row> {
       GROUP BY day ORDER BY day DESC
     `);
     const signups = await many(`
-      SELECT email, tier, created_at, orders_used, quota FROM accounts
+      SELECT email, tier, created_at, orders_used, quota,
+             COALESCE(available_cents,0) AS available_cents,
+             COALESCE(held_cents,0) AS held_cents
+      FROM accounts
       ORDER BY created_at DESC LIMIT 50
+    `);
+    const wallets = await one<Row>(`
+      SELECT COALESCE(SUM(available_cents),0) AS available_cents,
+             COALESCE(SUM(held_cents),0) AS held_cents,
+             SUM(CASE WHEN COALESCE(available_cents,0) > 0 OR COALESCE(held_cents,0) > 0 THEN 1 ELSE 0 END) AS funded_accounts
+      FROM accounts
+    `);
+    const orders = await one<Row>(`
+      SELECT COUNT(*) AS total,
+             SUM(CASE WHEN created_at >= datetime('now','-7 day') THEN 1 ELSE 0 END) AS new_7d,
+             SUM(CASE WHEN state IN ('human_review','submitted','held') THEN 1 ELSE 0 END) AS in_review,
+             COALESCE(SUM(listed_price_cents),0) AS listed_cents
+      FROM placement_orders
+    `);
+    const niches = await many(`
+      SELECT COALESCE(NULLIF(niche,''),'(none)') AS niche,
+             COUNT(*) AS sites,
+             ROUND(AVG(cite_score),1) AS avg_score,
+             SUM(CASE WHEN listed_price IS NOT NULL THEN 1 ELSE 0 END) AS priced
+      FROM sites GROUP BY 1 ORDER BY sites DESC LIMIT 12
     `);
     // Unmet demand: searches that returned nothing. Each one is a gap in
     // inventory an agent actually wanted.
@@ -977,16 +1016,23 @@ async function computeAnalytics(env: Env): Promise<Row> {
              COUNT(*) AS total_sites
       FROM sites
     `);
+    const queryTotal = Number(activity.queries_total) || 0;
+    const zeroCalls = (byTool as Row[]).reduce((n, t) => n + (Number(t.zero_result_calls) || 0), 0);
+    activity.zero_result_rate = queryTotal ? Math.round((1000 * zeroCalls) / queryTotal) / 10 : 0;
+    const funded = Number(wallets.funded_accounts) || 0;
     return {
       accounts, activity, by_tool: byTool, daily, signups,
       unmet_demand: unmet, top_topics: topTopics,
       free_placements_by_site: freeOrders, inventory_readiness: readiness,
+      wallets, orders, niches,
       funnel: {
         anonymous_queries: activity.anonymous_queries ?? 0,
         signups: accounts.total ?? 0,
+        funded_accounts: funded,
+        orders: Number(orders.total) || 0,
         free_placements_claimed: accounts.free_placements_claimed ?? 0,
-        paid_customers: 0,
-        note: 'Buyer MCP is paid-only. Funnel ends at signup until Stripe credits are live.',
+        paid_customers: funded,
+        note: 'Looking is free. Prepaid credits are required to book. Orders stay in /admin until ops copy and send them.',
       },
     };
 }
@@ -1106,6 +1152,9 @@ async function handleAdminApi(req: Request, env: Env, path: string): Promise<Res
     const costType = u.searchParams.get('cost_type');
     const mode = u.searchParams.get('acquisition_mode');
     const page = Math.max(1, parseInt(u.searchParams.get('page') ?? '1', 10));
+    const sortKey = u.searchParams.get('sort') || 'cite_score';
+    const sortDir = u.searchParams.get('dir') === 'asc' ? 'ASC' : 'DESC';
+    const sortSql = SITE_SORT[sortKey] ?? SITE_SORT.cite_score;
     const per = 50;
     const clauses: string[] = ['1=1'];
     const params: unknown[] = [];
@@ -1125,13 +1174,16 @@ async function handleAdminApi(req: Request, env: Env, path: string): Promise<Res
              COALESCE(acquisition_mode,'paid_placement') AS acquisition_mode,
              requires_reciprocal_link, agent_instructions
       FROM sites WHERE ${where}
-      ORDER BY cite_score DESC LIMIT ? OFFSET ?
+      ORDER BY ${sortSql} IS NULL, ${sortSql} ${sortDir} LIMIT ? OFFSET ?
     `).bind(...params, per, (page - 1) * per).all()).results as Row[];
     for (const r of rows) {
       r.margin = r.listed_price != null && r.seller_price != null
         ? Math.round(((r.listed_price as number) - (r.seller_price as number)) * 100) / 100 : null;
     }
-    return json({ total: total.n, page, per_page: per, sites: operatorSites(rows) });
+    return json({
+      total: total.n, page, per_page: per, sort: sortSql === SITE_SORT[sortKey] ? sortKey : 'cite_score',
+      dir: sortDir.toLowerCase(), sites: operatorSites(rows),
+    });
   }
 
   const patchMatch = path.match(/^\/admin\/api\/sites\/(cs_[a-z0-9]+)$/);
@@ -1423,7 +1475,7 @@ const adminTools = [
   },
   {
     name: 'admin_analytics',
-    description: 'Signups, active agents, query volume, top searched topics, unmet demand (searches returning nothing), free placements claimed, and inventory readiness.',
+    description: 'Signups, funded wallets, orders, query volume, top searched topics, unmet demand, inventory mix, and readiness.',
     inputSchema: { type: 'object', properties: {} },
   },
 ];

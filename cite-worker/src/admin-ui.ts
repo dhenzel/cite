@@ -106,6 +106,11 @@ export const ADMIN_HTML = `<!doctype html>
   table { width:100%; border-collapse:collapse; font-size:13px; }
   th { text-align:left; color:var(--muted); font-weight:500; padding:8px 10px; border-bottom:1px solid var(--line);
        position:sticky; top:0; background:var(--bg); white-space:nowrap; }
+  th.sort { cursor:pointer; user-select:none; }
+  th.sort:hover { color:var(--ink); }
+  th.sort.sorted { color:var(--ink); }
+  th.sort[data-dir="asc"]::after { content:' ↑'; font-size:11px; color:var(--cyan); }
+  th.sort[data-dir="desc"]::after { content:' ↓'; font-size:11px; color:var(--cyan); }
   td { padding:6px 10px; border-bottom:1px solid var(--line); white-space:nowrap; }
   td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
   td input { width:70px; padding:4px 6px; text-align:right; }
@@ -143,6 +148,17 @@ export const ADMIN_HTML = `<!doctype html>
   .mini td.n { text-align:right; font-variant-numeric:tabular-nums; }
   .empty { color:var(--muted); font-size:13px; padding:8px 0; }
   .barcell { background:linear-gradient(90deg,var(--accent) var(--w,0%),transparent 0); border-radius:3px; }
+  .funnel { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin:8px 0 18px; }
+  .funnel .step { background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:12px 14px; }
+  .funnel .step .n { font-size:22px; font-variant-numeric:tabular-nums; font-weight:650; }
+  .funnel .step .l { font-size:12px; color:var(--muted); margin-top:4px; }
+  .funnel .bar { height:6px; background:var(--line); border-radius:99px; margin-top:10px; overflow:hidden; }
+  .funnel .bar > i { display:block; height:100%; background:var(--accent); border-radius:99px; }
+  .spark { display:flex; align-items:flex-end; gap:6px; height:120px; padding:8px 4px 0; margin:0 0 10px; }
+  .spark-col { flex:1; display:flex; flex-direction:column; justify-content:flex-end; align-items:center; height:100%; min-width:0; }
+  .spark-bar { width:100%; max-width:28px; background:var(--accent); border-radius:4px 4px 0 0; min-height:2px; }
+  .spark-col span { font-size:10px; color:var(--muted); margin-top:6px; }
+  .ana-note { color:var(--muted); font-size:13.5px; max-width:72ch; margin:0 0 8px; }
   .whoami { font-size:12.5px; color:var(--muted); display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
   .whoami b { color:var(--ink); }
   .whoami a { color:var(--cyan); }
@@ -208,9 +224,19 @@ export const ADMIN_HTML = `<!doctype html>
   <div style="overflow-x:auto">
   <table>
     <thead><tr>
-      <th>Domain</th><th>Niche</th><th class="num">Score</th><th class="num">DR</th><th class="num">Org traffic</th>
-      <th class="num">Seller $</th><th class="num">Markup</th><th class="num">Listed $</th><th class="num">Margin $</th>
-      <th>Acquisition</th><th>Link attr</th><th class="num">Max links</th><th>Status</th>
+      <th class="sort" data-sort="domain">Domain</th>
+      <th class="sort" data-sort="niche">Niche</th>
+      <th class="num sort" data-sort="cite_score">Score</th>
+      <th class="num sort" data-sort="dr">DR</th>
+      <th class="num sort" data-sort="traffic">Org traffic</th>
+      <th class="num sort" data-sort="seller_price">Seller $</th>
+      <th class="num sort" data-sort="markup">Markup</th>
+      <th class="num sort" data-sort="listed_price">Listed $</th>
+      <th class="num sort" data-sort="margin">Margin $</th>
+      <th class="sort" data-sort="acquisition_mode">Acquisition</th>
+      <th class="sort" data-sort="link_attribute">Link attr</th>
+      <th class="num sort" data-sort="max_links_per_post">Max links</th>
+      <th class="sort" data-sort="status">Status</th>
     </tr></thead>
     <tbody id="rows"></tbody>
   </table>
@@ -223,20 +249,34 @@ export const ADMIN_HTML = `<!doctype html>
   </div>
 
   <div id="pane-ana" style="display:none">
+    <p class="ana-note">What agents are looking for, whether they pay, and whether inventory can fill it. Click any table header to sort.</p>
     <div class="kpis" id="kpis"></div>
+    <div class="funnel" id="a_funnel"></div>
     <div class="cols">
-      <section><h3>Signups</h3><div id="a_signups"></div></section>
-      <section><h3>Activity — last 14 days</h3><div id="a_daily"></div></section>
+      <section><h3>Activity — last 14 days</h3><div id="a_spark"></div><div id="a_daily"></div></section>
+      <section><h3>Tool usage</h3><div id="a_tools"></div></section>
       <section><h3>What agents search for</h3><div id="a_topics"></div></section>
       <section><h3>Unmet demand <small>searches returning nothing</small></h3><div id="a_unmet"></div></section>
-      <section><h3>Tool usage</h3><div id="a_tools"></div></section>
-      <section><h3>Free placements claimed</h3><div id="a_free"></div></section>
+      <section><h3>Inventory by niche</h3><div id="a_niches"></div></section>
+      <section><h3>Inventory readiness</h3><div id="a_ready"></div></section>
+      <section><h3>Signups</h3><div id="a_signups"></div></section>
+      <section><h3>Legacy free claims</h3><div id="a_free"></div></section>
     </div>
-    <section><h3>Inventory readiness</h3><div id="a_ready"></div></section>
   </div>
 
   <div id="pane-ord" style="display:none">
     <p class="prose sub">Orders stay in this tab. When a new one arrives you get mail — copy the post here and send it to the publisher yourself. Domain is for operators only; never send it to the buyer. Context Engine writes come later.</p>
+    <div class="bar">
+      <select id="ord_sort" onchange="renderOrders()">
+        <option value="created_at:desc">Newest first</option>
+        <option value="created_at:asc">Oldest first</option>
+        <option value="listed_price_cents:desc">Highest price</option>
+        <option value="listed_price_cents:asc">Lowest price</option>
+        <option value="word_count:desc">Longest post</option>
+        <option value="domain:asc">Domain A–Z</option>
+        <option value="state:asc">State</option>
+      </select>
+    </div>
     <div id="ord_rows"></div>
   </div>
 
@@ -279,6 +319,8 @@ export const ADMIN_HTML = `<!doctype html>
 
 <script>
 let page = 1;
+let sortCol = 'cite_score';
+let sortDir = 'desc';
 const $ = (id) => document.getElementById(id);
 // Auth is the SSO session cookie — sent automatically, nothing to store.
 const hdrs = () => ({ 'content-type': 'application/json' });
@@ -475,16 +517,29 @@ function showTab(t) {
 }
 
 let ordersCache = [];
+let ordersShown = [];
 async function loadOrders() {
   const r = await fetch('/admin/api/orders', { headers: hdrs() });
   if (r.status === 401) { location.href = '/auth/login'; return; }
   const d = await r.json();
   ordersCache = d.orders || [];
-  if (!ordersCache.length) {
+  renderOrders();
+}
+function renderOrders() {
+  const spec = ($('ord_sort') && $('ord_sort').value) || 'created_at:desc';
+  const parts = spec.split(':');
+  const key = parts[0];
+  const mul = parts[1] === 'asc' ? 1 : -1;
+  ordersShown = ordersCache.slice().sort((a, b) => {
+    const av = a[key], bv = b[key];
+    if (typeof av === 'number' || typeof bv === 'number') return mul * ((Number(av) || 0) - (Number(bv) || 0));
+    return mul * String(av || '').localeCompare(String(bv || ''), undefined, { sensitivity: 'base' });
+  });
+  if (!ordersShown.length) {
     $('ord_rows').innerHTML = '<div class="empty">No submitted posts yet.</div>';
     return;
   }
-  $('ord_rows').innerHTML = ordersCache.map((o, i) => {
+  $('ord_rows').innerHTML = ordersShown.map((o, i) => {
     const dollars = ((o.listed_price_cents || 0) / 100).toFixed(0);
     const when = (o.created_at || '').slice(0, 16);
     const domain = o.domain || o.publisher_id || '';
@@ -508,12 +563,12 @@ async function loadOrders() {
   }).join('');
 }
 function copyPost(i) {
-  const o = ordersCache[i];
+  const o = ordersShown[i];
   if (!o) return;
   copyText((o.title || '') + '\\n\\n' + (o.body || ''));
 }
 function copyDetails(i) {
-  const o = ordersCache[i];
+  const o = ordersShown[i];
   if (!o) return;
   copyText([
     'domain: ' + (o.domain || o.publisher_id || ''),
@@ -526,55 +581,95 @@ function copyDetails(i) {
 }
 
 const tbl = (headers, rows, empty) => rows.length
-  ? '<table class="mini"><thead><tr>' + headers.map(h => '<th' + (h.n ? ' class="n"' : '') + '>' + h.t + '</th>').join('') + '</tr></thead><tbody>'
-    + rows.map(r => '<tr>' + r.map((c, i) => '<td' + (headers[i].n ? ' class="n"' : '') + '>' + c + '</td>').join('') + '</tr>').join('')
+  ? '<table class="mini"><thead><tr>' + headers.map((h, i) => '<th class="' + (h.n ? 'num ' : '') + 'sort" data-col="' + i + '"' + (h.n ? ' data-num="1"' : '') + '>' + h.t + '</th>').join('') + '</tr></thead><tbody>'
+    + rows.map(r => '<tr>' + r.map((c, i) => '<td' + (headers[i].n ? ' class="num"' : '') + '>' + c + '</td>').join('') + '</tr>').join('')
     + '</tbody></table>'
   : '<div class="empty">' + empty + '</div>';
+
+function dollars(cents) {
+  return '$' + ((Number(cents) || 0) / 100).toLocaleString('en-US', { maximumFractionDigits: 0 });
+}
+function fmtQuery(raw) {
+  try {
+    const a = JSON.parse(raw);
+    const bits = [];
+    if (Array.isArray(a.topics) && a.topics.length) bits.push(a.topics.join(', '));
+    if (a.text) bits.push('"' + a.text + '"');
+    if (a.min_score != null) bits.push('score ≥ ' + a.min_score);
+    if (a.max_price != null) bits.push('≤ $' + a.max_price);
+    if (a.link_attribute) bits.push(a.link_attribute);
+    return bits.join(' · ') || String(raw || '');
+  } catch (e) { return String(raw || ''); }
+}
 
 async function analytics() {
   const r = await fetch('/admin/api/analytics', { headers: hdrs() });
   if (r.status === 401) { location.href = '/auth/login'; return; }
   const d = await r.json();
+  const ac = d.accounts || {};
+  const act = d.activity || {};
+  const wal = d.wallets || {};
+  const ord = d.orders || {};
+  const fun = d.funnel || {};
   const kpi = (n, l, hi) => '<div class="kpi' + (hi ? ' hi' : '') + '"><div class="n">' + n + '</div><div class="l">' + l + '</div></div>';
   $('kpis').innerHTML =
-    kpi(d.accounts.total ?? 0, 'accounts signed up', true) +
-    kpi(d.accounts.new_7d ?? 0, 'new in last 7 days') +
-    kpi(d.activity.identified_agents ?? 0, 'agents with a key') +
-    kpi(d.activity.queries_total ?? 0, 'queries all time', true) +
-    kpi(d.activity.queries_24h ?? 0, 'queries last 24h') +
-    kpi(d.accounts.free_placements_claimed ?? 0, 'free placements claimed');
+    kpi(act.queries_24h ?? 0, 'queries last 24h', true) +
+    kpi(act.queries_7d ?? 0, 'queries last 7 days') +
+    kpi(act.identified_agents ?? 0, 'agents with a key') +
+    kpi(ac.total ?? 0, 'accounts') +
+    kpi(wal.funded_accounts ?? fun.funded_accounts ?? 0, 'funded accounts', true) +
+    kpi(dollars(wal.available_cents), 'credits on hand') +
+    kpi(ord.in_review ?? 0, 'orders in review', true) +
+    kpi((act.zero_result_rate ?? 0) + '%', 'zero-result rate');
 
-  $('a_signups').innerHTML = tbl(
-    [{t:'Email'},{t:'Tier'},{t:'Claimed',n:1},{t:'Signed up'}],
-    (d.signups||[]).map(s => [esc(s.email), esc(s.tier), s.orders_used + '/' + s.quota, esc((s.created_at||'').slice(0,16))]),
-    'No signups yet. Every register_account call lands here.');
+  const steps = [
+    ['Anonymous queries', fun.anonymous_queries ?? act.anonymous_queries ?? 0],
+    ['Accounts', fun.signups ?? ac.total ?? 0],
+    ['Funded', fun.funded_accounts ?? wal.funded_accounts ?? 0],
+    ['Orders', fun.orders ?? ord.total ?? 0],
+  ];
+  const maxStep = Math.max(1, ...steps.map(s => s[1]));
+  $('a_funnel').innerHTML = steps.map(s =>
+    '<div class="step"><div class="n">' + s[1] + '</div><div class="l">' + s[0] + '</div>'
+    + '<div class="bar"><i style="width:' + Math.round(100 * s[1] / maxStep) + '%"></i></div></div>'
+  ).join('');
 
-  const maxQ = Math.max(1, ...(d.daily||[]).map(x => x.queries));
+  const days = (d.daily || []).slice().reverse();
+  const maxQ = Math.max(1, ...days.map(x => x.queries));
+  $('a_spark').innerHTML = days.length
+    ? '<div class="spark">' + days.map(x =>
+        '<div class="spark-col" title="' + esc(x.day) + ': ' + x.queries + ' queries"><div class="spark-bar" style="height:' + Math.round(80 * x.queries / maxQ) + '%"></div><span>' + esc((x.day || '').slice(5)) + '</span></div>'
+      ).join('') + '</div>'
+    : '<div class="empty">No activity logged yet.</div>';
   $('a_daily').innerHTML = tbl(
     [{t:'Day'},{t:'Queries',n:1},{t:'Agents',n:1},{t:''}],
-    (d.daily||[]).map(x => [x.day, x.queries, x.agents,
-      '<div class="barcell" style="--w:' + Math.round(100*x.queries/maxQ) + '%">&nbsp;</div>']),
+    days.slice().reverse().map(x => [x.day, x.queries, x.agents,
+      '<div class="barcell" style="--w:' + Math.round(100 * x.queries / maxQ) + '%">&nbsp;</div>']),
     'No activity logged yet.');
+
+  $('a_tools').innerHTML = tbl(
+    [{t:'Tool'},{t:'Calls',n:1},{t:'Zero-result',n:1},{t:'Miss %',n:1}],
+    (d.by_tool || []).map(t => {
+      const calls = t.calls ?? 0;
+      const zero = t.zero_result_calls ?? 0;
+      return [esc(t.tool), calls, zero, calls ? Math.round(100 * zero / calls) + '%' : '–'];
+    }),
+    'No tool calls logged yet.');
 
   $('a_topics').innerHTML = tbl(
     [{t:'Topic'},{t:'Searches',n:1}],
-    (d.top_topics||[]).map(t => [esc(t.topic), t.times]),
+    (d.top_topics || []).map(t => [esc(t.topic), t.times]),
     'No searches yet — this is what agents are actually asking for.');
 
   $('a_unmet').innerHTML = tbl(
     [{t:'Query'},{t:'Times',n:1}],
-    (d.unmet_demand||[]).map(u => [esc((u.args||'').slice(0,90)), u.times]),
-    'Nothing yet. Each row here is inventory an agent wanted and we could not supply.');
+    (d.unmet_demand || []).map(u => [esc(fmtQuery(u.args || '').slice(0, 120)), u.times]),
+    'Nothing yet. Each row is inventory an agent wanted and we could not supply.');
 
-  $('a_tools').innerHTML = tbl(
-    [{t:'Tool'},{t:'Calls',n:1},{t:'Zero-result',n:1}],
-    (d.by_tool||[]).map(t => [esc(t.tool), t.calls, t.zero_result_calls]),
-    'No tool calls logged yet.');
-
-  $('a_free').innerHTML = tbl(
-    [{t:'Site'},{t:'Mode'},{t:'Claims',n:1}],
-    (d.free_placements_by_site||[]).map(f => [esc(f.domain || f.site_id), esc(f.acquisition_mode||''), f.claims]),
-    'No free placements claimed yet.');
+  $('a_niches').innerHTML = tbl(
+    [{t:'Niche'},{t:'Sites',n:1},{t:'Avg score',n:1},{t:'Priced',n:1}],
+    (d.niches || []).map(n => [esc(n.niche), n.sites, n.avg_score ?? '–', n.priced ?? 0]),
+    'No sites in inventory yet.');
 
   const ready = d.inventory_readiness || {};
   $('a_ready').innerHTML = tbl(
@@ -582,8 +677,19 @@ async function analytics() {
     [['Sites total', ready.total_sites],
      ['Free sites', ready.free_sites],
      ['Link attribute still unknown (launch blocker)', ready.link_attr_unknown],
-     ['Unpriced sites', ready.unpriced]],
+     ['Unpriced sites', ready.unpriced],
+     ['Orders held $', dollars(ord.listed_cents)]],
     '');
+
+  $('a_signups').innerHTML = tbl(
+    [{t:'Email'},{t:'Tier'},{t:'Credits'},{t:'Held'},{t:'Claimed',n:1},{t:'Signed up'}],
+    (d.signups || []).map(s => [esc(s.email), esc(s.tier), dollars(s.available_cents), dollars(s.held_cents), (s.orders_used ?? 0) + '/' + (s.quota ?? 0), esc((s.created_at || '').slice(0, 16))]),
+    'No signups yet. Every register_account call lands here.');
+
+  $('a_free').innerHTML = tbl(
+    [{t:'Site'},{t:'Mode'},{t:'Claims',n:1}],
+    (d.free_placements_by_site || []).map(f => [esc(f.domain || f.site_id), esc(f.acquisition_mode || ''), f.claims]),
+    'No legacy free claims.');
 }
 
 function resetFilters() {
@@ -593,7 +699,7 @@ function resetFilters() {
 
 async function load(p) {
   page = Math.max(1, p || 1);
-  const u = new URLSearchParams({ page });
+  const u = new URLSearchParams({ page, sort: sortCol, dir: sortDir });
   if ($('q').value) u.set('q', $('q').value);
   if ($('fniche').value) u.set('niche', $('fniche').value);
   if ($('fstatus').value) u.set('status', $('fstatus').value);
@@ -609,6 +715,39 @@ async function load(p) {
     : '<tr><td colspan="13" class="empty">No sites match these filters. '
       + '<button class="copy" onclick="resetFilters()">Reset filters</button></td></tr>';
   d.sites.forEach(s => { if (s.niche && !niches.has(s.niche)) { const o = document.createElement('option'); o.textContent = s.niche; $('fniche').appendChild(o); niches.add(s.niche); } });
+  markSortHeaders();
+}
+const TEXT_SORT = { domain:1, niche:1, acquisition_mode:1, link_attribute:1, status:1 };
+function setSort(col) {
+  if (sortCol === col) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+  else { sortCol = col; sortDir = TEXT_SORT[col] ? 'asc' : 'desc'; }
+  load(1);
+}
+function markSortHeaders() {
+  document.querySelectorAll('#pane-inv th.sort').forEach(th => {
+    const on = th.dataset.sort === sortCol;
+    th.classList.toggle('sorted', on);
+    th.dataset.dir = on ? sortDir : '';
+  });
+}
+function sortMini(th) {
+  const table = th.closest('table');
+  if (!table) return;
+  const col = parseInt(th.dataset.col, 10);
+  const num = th.dataset.num === '1';
+  const tbody = table.tBodies[0];
+  const rows = Array.prototype.slice.call(tbody.rows);
+  const dir = th.dataset.dir === 'asc' ? -1 : 1;
+  table.querySelectorAll('th.sort').forEach(h => { h.dataset.dir = ''; h.classList.remove('sorted'); });
+  th.dataset.dir = dir === 1 ? 'asc' : 'desc';
+  th.classList.add('sorted');
+  rows.sort((a, b) => {
+    const av = (a.cells[col] && a.cells[col].textContent || '').trim();
+    const bv = (b.cells[col] && b.cells[col].textContent || '').trim();
+    if (num) return dir * ((parseFloat(av.replace(/[^0-9.-]/g, '')) || 0) - (parseFloat(bv.replace(/[^0-9.-]/g, '')) || 0));
+    return dir * av.localeCompare(bv, undefined, { numeric: true, sensitivity: 'base' });
+  });
+  rows.forEach(r => tbody.appendChild(r));
 }
 const esc = (s) => (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function rowHtml(s) {
@@ -684,6 +823,15 @@ document.getElementById('rows').addEventListener('change', (ev) => {
   if (el.dataset.kind === 'float') value = value === '' ? null : parseFloat(value);
   else if (el.dataset.kind === 'int') value = value === '' ? null : parseInt(value, 10);
   patch(el, field, value);
+});
+
+document.getElementById('pane-inv').addEventListener('click', (ev) => {
+  const th = ev.target && ev.target.closest && ev.target.closest('th.sort');
+  if (th && th.dataset.sort) setSort(th.dataset.sort);
+});
+document.getElementById('pane-ana').addEventListener('click', (ev) => {
+  const th = ev.target && ev.target.closest && ev.target.closest('th.sort');
+  if (th) sortMini(th);
 });
 
 boot();

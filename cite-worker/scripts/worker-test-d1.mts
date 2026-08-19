@@ -54,6 +54,20 @@ r = await f('/admin/api/sites?q=secret', { headers: auth });
 let d = await r.json();
 assert(d.total === 1 && d.sites[0].domain === 'secret-example.com' && d.sites[0].margin === 60, 'admin list returns private fields + margin');
 assert(!('da' in d.sites[0]) && !('tf' in d.sites[0]) && !('cf' in d.sites[0]), 'admin list omits Moz/Majestic');
+r = await f('/admin/api/sites?sort=domain&dir=asc', { headers: auth });
+d = await r.json();
+{
+  const names = d.sites.map((s: { domain: string }) => s.domain);
+  assert(names.join() === [...names].sort().join(), 'admin list sorts by domain asc');
+  assert(d.sort === 'domain' && d.dir === 'asc', 'admin list echoes the sort');
+}
+r = await f('/admin/api/analytics', { headers: auth });
+{
+  const ana = await r.json();
+  assert(ana.accounts && ana.activity && ana.funnel, 'analytics payload has accounts, activity, funnel');
+  assert('funded_accounts' in ana.funnel && 'orders' in ana.funnel, 'funnel includes funded accounts and orders');
+  assert(Array.isArray(ana.niches) && Array.isArray(ana.daily), 'analytics includes niche mix and daily activity');
+}
 
 // markup edit → listed price recompute (100 × 2.0 = 200)
 r = await f('/admin/api/sites/cs_aaa111bbb222', { method: 'PATCH', headers: auth, body: JSON.stringify({ markup: 2.0 }) });
@@ -289,6 +303,8 @@ assert(ad.added === true && ad.listed_price === 100, 'admin_add_site computes li
 ad = await adminCall('admin_analytics', {});
 assert(ad.accounts.total === 1 && ad.activity.queries_total > 0, 'admin_analytics reports signups and queries');
 assert(Array.isArray(ad.top_topics) && Array.isArray(ad.unmet_demand), 'analytics includes demand views');
+assert(ad.funnel && typeof ad.funnel.funded_accounts === 'number', 'analytics funnel includes funded accounts');
+assert(Array.isArray(ad.niches), 'analytics includes inventory by niche');
 
 console.log('\nall extended checks passed');
 
@@ -458,6 +474,10 @@ r = await fs2('/admin', { headers: { cookie } });
   assert(consoleHtml.includes('Orders'), 'console has an Orders tab');
   assert(consoleHtml.includes('#17204B') && consoleHtml.includes('#30D2AD'), 'console uses Shortlist navy and mint');
   assert(consoleHtml.includes('Copy post'), 'Orders tab can copy the post out of the platform');
+  assert(consoleHtml.includes('data-sort="cite_score"') && consoleHtml.includes('data-sort="listed_price"'),
+    'inventory columns are sortable');
+  assert(consoleHtml.includes('id="a_funnel"') && consoleHtml.includes('id="a_spark"'),
+    'analytics has a funnel and 14-day chart');
 }
 r = await fs2('/admin/api/sites?q=secret', { headers: { cookie } });
 const sitesPayload = await r.json();

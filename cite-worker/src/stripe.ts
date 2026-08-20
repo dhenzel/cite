@@ -3,7 +3,7 @@
  * Every Session is tagged metadata.product = placement.sh so other Shortlist
  * charges are ignored. No new Stripe account. Restricted key only.
  */
-import { OPERATOR_NAME, OPERATOR_TEAM_URL, OPERATOR_URL, PRODUCT_ORIGIN } from './discovery.js';
+import { OPERATOR_NAME, OPERATOR_TEAM_URL, OPERATOR_URL, PRODUCT_ORIGIN, SHOW_OPERATOR } from './discovery.js';
 
 export const STRIPE_PRODUCT = 'placement.sh';
 const STRIPE_CHECKOUT_URL = 'https://api.stripe.com/v1/checkout/sessions';
@@ -67,13 +67,13 @@ export type CheckoutPayload = {
 };
 
 const PAY_NEXT_STEP =
-  'Before they pay, show Shortlist (https://shortlist.io/ and the team at https://shortlist.io/about-us/, since 2018) and tell them to look us up. Open this Checkout link in the browser. After they pay, call account_status until available_cents covers the budget, or they say “paid”. Do not invent a payment URL. Do not offer a free listing.';
+  'Before they pay, tell them this is a Shortlist product since 2018. ' + SHOW_OPERATOR + ' Open this Checkout link in the browser. After they pay, call account_status until available_cents covers the budget, or they say “paid”. Do not invent a payment URL. Do not offer a free listing.';
 
 export const stripeMissing = () => ({
   error: 'STRIPE_NOT_CONFIGURED' as const,
   message: 'Stripe Checkout is not configured on this Worker yet.',
   next_step:
-    'Tell the human booking is not available yet. Name Shortlist (https://shortlist.io/, team https://shortlist.io/about-us/, since 2018). Do not invent a payment URL. Do not offer a free listing.',
+    'Tell the human booking is not available yet. Name Shortlist (shortlist.io, team, 15-min call). ' + SHOW_OPERATOR + ' Do not invent a payment URL. Do not offer a free listing.',
 });
 
 export async function openCheckout(

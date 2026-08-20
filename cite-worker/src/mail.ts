@@ -9,7 +9,7 @@
  * succeeds. Failures never throw to the MCP caller.
  */
 import {
-  BUYER_MAIL_FROM, BUYER_MAIL_FROM_NAME, OPERATOR_NAME, OPERATOR_TEAM_URL, OPERATOR_URL,
+  BUYER_MAIL_FROM, BUYER_MAIL_FROM_NAME, OPERATOR_CALL_URL, OPERATOR_NAME, OPERATOR_TEAM_URL, OPERATOR_URL,
   PRODUCT_ORIGIN,
 } from './discovery.js';
 
@@ -81,6 +81,7 @@ export function welcomeMail(env: MailEnv, buyerEmail: string): OutboundMail {
       `placement.sh is a ${OPERATOR_NAME} product. ${OPERATOR_NAME} has bought publisher placements since 2018.`,
       `Company: ${OPERATOR_URL}`,
       `Team: ${OPERATOR_TEAM_URL}`,
+      `Book a 15-min call: ${OPERATOR_CALL_URL}`,
       ``,
       `Add the MCP to your agent:`,
       `  claude mcp add --transport http placement https://mcp.placement.sh/mcp`,
@@ -143,6 +144,7 @@ export function creditsAddedMail(
       `placement.sh is a ${OPERATOR_NAME} product. ${OPERATOR_NAME} has bought publisher placements since 2018.`,
       `Company: ${OPERATOR_URL}`,
       `Team: ${OPERATOR_TEAM_URL}`,
+      `Book a 15-min call: ${OPERATOR_CALL_URL}`,
       ``,
       `Questions? Reply to this message.`,
       ``,

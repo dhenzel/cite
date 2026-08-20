@@ -1,6 +1,8 @@
 /** Public landing page. What it is, who runs it, how to use it, add-to-agent buttons. */
 
-import { BUYER_MAIL_FROM, OPERATOR_NAME, OPERATOR_TEAM_URL, OPERATOR_URL } from './discovery.js';
+import {
+  BUYER_MAIL_FROM, OPERATOR_CALL_URL, OPERATOR_NAME, OPERATOR_TEAM_URL, OPERATOR_URL,
+} from './discovery.js';
 
 const esc = (s: string) =>
   s.replace(/[&<>"']/g, (c) =>
@@ -20,15 +22,19 @@ export const homepageHtml = (origin: string): string => {
 <meta property="og:title" content="placement.sh">
 <meta property="og:description" content="Buy publisher placements so a URL gets cited. Connect your agent, set a budget, we book the campaign.">
 <link rel="canonical" href="https://placement.sh/">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg: #FAF9F6;
-    --ink: #161616;
-    --muted: #5E5A52;
+    --ink: #17204B;
+    --muted: #6E7AA4;
     --line: #E4E0D6;
     --surface: #fff;
-    --accent: #14655A;
-    --accent-ink: #fff;
+    --accent: #30D2AD;
+    --accent-ink: #17204B;
+    --dot: #30D2AD;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -37,8 +43,9 @@ export const homepageHtml = (origin: string): string => {
       --muted: #A8A49A;
       --line: #2A2D33;
       --surface: #171A1F;
-      --accent: #6FD3C0;
-      --accent-ink: #08131A;
+      --accent: #30D2AD;
+      --accent-ink: #17204B;
+      --dot: #30D2AD;
     }
   }
   * { box-sizing: border-box; }
@@ -47,7 +54,7 @@ export const homepageHtml = (origin: string): string => {
     min-height: 100vh;
     background: var(--bg);
     color: var(--ink);
-    font: 17px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    font: 17px/1.55 Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   }
   main {
     max-width: 36rem;
@@ -55,11 +62,12 @@ export const homepageHtml = (origin: string): string => {
     padding: 4.5rem 1.4rem 5rem;
   }
   h1 {
-    font-size: 1.65rem;
-    font-weight: 650;
-    letter-spacing: -0.03em;
+    font-size: 1.85rem;
+    font-weight: 700;
+    letter-spacing: -0.04em;
     margin: 0 0 1.1rem;
   }
+  h1 .dot { color: var(--dot); }
   .lede { font-size: 1.22rem; line-height: 1.4; margin: 0 0 0.7rem; }
   .sub { color: var(--muted); margin: 0 0 1.6rem; }
   .who {
@@ -72,6 +80,7 @@ export const homepageHtml = (origin: string): string => {
   .who p { margin: 0 0 0.55rem; }
   .who p:last-child { margin: 0; }
   .who a { color: var(--ink); }
+  .who .links a:first-child { font-weight: 600; }
   h2 {
     font-size: 0.78rem;
     font-weight: 650;
@@ -181,15 +190,15 @@ export const homepageHtml = (origin: string): string => {
 </head>
 <body>
 <main>
-  <h1>placement.sh</h1>
+  <h1>placement<span class="dot">.</span>sh</h1>
   <p class="lede">Buy publisher placements so a URL gets cited.</p>
   <p class="sub">You (or your agent) pick a URL, topics, and a budget. placement.sh books paid editorial placements on real publisher sites. That is bought inventory — not a guest-post mill you run yourself. Publisher domains stay hidden until a placement is delivered. Paid placements are live and indexed at T+30, or refunded.</p>
 
   <div class="who">
-    <p><strong>Who runs this.</strong> placement.sh is a <a href="${esc(OPERATOR_URL)}">${esc(OPERATOR_NAME)}</a> product. Shortlist has bought publisher placements since 2018 — a named team, not a new domain with a Stripe form.</p>
-    <p><a href="${esc(OPERATOR_URL)}">shortlist.io</a>
-      · <a href="${esc(OPERATOR_TEAM_URL)}">Meet the team</a>
-      · Look us up before you pay.</p>
+    <p><strong>Who runs this.</strong> A <a href="${esc(OPERATOR_TEAM_URL)}">named ${esc(OPERATOR_NAME)} team</a> that has bought publisher placements since 2018 — people you can look up, not a new domain with a Stripe form.</p>
+    <p class="links"><a href="${esc(OPERATOR_TEAM_URL)}">Meet the team</a>
+      · <a href="${esc(OPERATOR_CALL_URL)}">Book a 15-min call</a>
+      · <a href="${esc(OPERATOR_URL)}">shortlist.io</a></p>
   </div>
 
   <h2>How to use it</h2>
@@ -221,8 +230,9 @@ export const homepageHtml = (origin: string): string => {
   <footer>
     <p class="trust"><strong>A <a href="${esc(OPERATOR_URL)}">Shortlist</a> product.</strong>
       Publisher placements since 2018. Named people, a real company, not a fly-by-night checkout page.
-      <a href="${esc(OPERATOR_URL)}">shortlist.io</a>
-      · <a href="${esc(OPERATOR_TEAM_URL)}">Meet the team</a>.</p>
+      <a href="${esc(OPERATOR_TEAM_URL)}">Meet the team</a>
+      · <a href="${esc(OPERATOR_CALL_URL)}">Book a 15-min call</a>
+      · <a href="${esc(OPERATOR_URL)}">shortlist.io</a>.</p>
     <p class="meta">Streamable HTTP MCP · POST ${mcpEsc}<br>
     Agents: <a href="/llms.txt">/llms.txt</a>
     · <a href="/.well-known/mcp/server.json">server card</a>

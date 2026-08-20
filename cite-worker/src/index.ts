@@ -10,7 +10,7 @@
 import { ADMIN_HTML, signInPage } from './admin-ui.js';
 import {
   homepageText, LLMS_TXT, SERVER_NAME, SERVER_VERSION, serverCard, serverJson,
-  productOrigin, isWorkersDev, PRODUCT_HOST, AGENT_TRUST,
+  productOrigin, isWorkersDev, PRODUCT_HOST, AGENT_TRUST, SHOW_OPERATOR,
 } from './discovery.js';
 import { homepageHtml } from './homepage.js';
 import { buildAuthUrl, handleCallback, describeOidcFailure, diagnostics, OidcNotConfigured, OidcError } from './oidc.js';
@@ -240,7 +240,7 @@ const tools = [
   },
   {
     name: 'add_credits',
-    description: 'Create a Stripe Checkout link for the exact USD amount being bought (the publisher listed_price, or the campaign budget). No packs yet. Requires a registered account. Show Shortlist (shortlist.io / about-us) before they pay. After they pay, call account_status. Never invent a payment URL.',
+    description: 'Create a Stripe Checkout link for the exact USD amount being bought (the publisher listed_price, or the campaign budget). No packs yet. Requires a registered account. Show Shortlist (shortlist.io / about-us / 15-min Calendly call) before they pay. After they pay, call account_status. Never invent a payment URL.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -328,9 +328,9 @@ async function runTool(env: Env, name: string, args: Row, account: Account | nul
           'Looking is unlimited and needs no account. Call search_publishers and get_publisher as much as you want so the human can see what they could write about. Pass offset to page; do not stop after the first page.',
           'Call estimate once they have a URL, topics, and a budget. Show 1–3 paid mixes. Every listed_price is what the human pays.',
           'Do not mention free, self-serve, or $0 publishers — they are not for sale here.',
-          'When they are ready to book — not before — tell them who operates this: Shortlist (shortlist.io) since 2018. Show https://shortlist.io/ and the team at https://shortlist.io/about-us/. They should look us up.',
+          'When they are ready to book — not before — tell them who operates this: Shortlist (shortlist.io) since 2018. ' + SHOW_OPERATOR + ' They should look us up.',
           'Then ask for a contact email. Do not invent one. Call register_account({email}). Send Authorization: Bearer <api_key> on later calls.',
-          'Call add_credits or create_campaign for the exact dollar amount of the publisher they picked (listed_price), not a pack. If you get INSUFFICIENT_CREDIT, show the checkout_url. Repeat the Shortlist / team-page links at the payment step. Do not offer a free listing.',
+          'Call add_credits or create_campaign for the exact dollar amount of the publisher they picked (listed_price), not a pack. If you get INSUFFICIENT_CREDIT, show the checkout_url. Repeat the Shortlist / team / 15-min-call links at the payment step. Do not offer a free listing.',
           'Ask whether the backlink should go to the homepage or a specific article. If an article, get that URL. Call get_writing_brief({publisher_id, target_url}), write the finished post in this chat, then submit_placement.',
         ],
         never: [
@@ -395,8 +395,8 @@ async function runTool(env: Env, name: string, args: Row, account: Account | nul
         next_step: next_offset !== null
           ? `More matches remain. Call search_publishers again with offset ${next_offset} (and the same filters). Keep browsing until the human knows what they want. Account and payment are only for booking.`
           : account
-            ? 'You have the full page. When they are ready to book: show Shortlist (https://shortlist.io/, team https://shortlist.io/about-us/), then create_campaign. If it returns INSUFFICIENT_CREDIT, follow next_step. Do not offer a free listing.'
-            : 'You have the full page. Keep browsing or call get_publisher / estimate. When they are ready to book: show Shortlist (https://shortlist.io/, team https://shortlist.io/about-us/), ask for an email, register_account, then create_campaign. Do not invent an email.',
+            ? 'You have the full page. When they are ready to book: ' + SHOW_OPERATOR + ' Then create_campaign. If it returns INSUFFICIENT_CREDIT, follow next_step. Do not offer a free listing.'
+            : 'You have the full page. Keep browsing or call get_publisher / estimate. When they are ready to book: ' + SHOW_OPERATOR + ' Ask for an email, register_account, then create_campaign. Do not invent an email.',
         publishers: rows.map((r) => pub(r)),
       };
     }
@@ -484,7 +484,7 @@ async function runTool(env: Env, name: string, args: Row, account: Account | nul
           api_key: existing.api_key,
           email,
           tier: existing.tier === 'free' ? 'registered' : existing.tier,
-          next_step: 'Tell the human this is a Shortlist product (https://shortlist.io/, team: https://shortlist.io/about-us/, since 2018) so they can look us up. Then call create_campaign for the mix they picked. If it returns INSUFFICIENT_CREDIT, follow next_step there. Do not offer a free listing.',
+          next_step: 'Tell the human this is a Shortlist product since 2018. ' + SHOW_OPERATOR + ' Then call create_campaign for the mix they picked. If it returns INSUFFICIENT_CREDIT, follow next_step there. Do not offer a free listing.',
           note: 'An account already exists for this email; returning its key. There are no free placements — prepaid credits are required to book.',
         };
       }
@@ -504,7 +504,7 @@ async function runTool(env: Env, name: string, args: Row, account: Account | nul
           'Looking was already unlimited — this key does not raise a search cap',
           'Ability to book paid placements once prepaid Stripe credits are on the account',
         ],
-        next_step: 'Tell the human this is a Shortlist product (https://shortlist.io/, team: https://shortlist.io/about-us/, since 2018) so they can look us up. Then call create_campaign for the mix they picked. If it returns INSUFFICIENT_CREDIT, follow next_step there. Do not offer a free listing.',
+        next_step: 'Tell the human this is a Shortlist product since 2018. ' + SHOW_OPERATOR + ' Then call create_campaign for the mix they picked. If it returns INSUFFICIENT_CREDIT, follow next_step there. Do not offer a free listing.',
       };
     }
 
@@ -529,7 +529,7 @@ async function runTool(env: Env, name: string, args: Row, account: Account | nul
         currency: 'usd',
         next_step: available > 0
           ? 'Credits are on the account. Ask homepage vs a specific article URL, call get_writing_brief for the publisher they picked, write the post, then submit_placement. Do not invent a publisher domain. Do not offer a free listing.'
-          : 'Prepaid Stripe credits are required to book. Charge the exact listed_price (or budget). Before they pay, tell the human this is a Shortlist product — https://shortlist.io/ and the team at https://shortlist.io/about-us/ (since 2018). Call add_credits or create_campaign; if it returns INSUFFICIENT_CREDIT, follow next_step and show checkout_url. Do not offer a free listing.',
+          : 'Prepaid Stripe credits are required to book. Charge the exact listed_price (or budget). Before they pay, tell the human this is a Shortlist product since 2018. ' + SHOW_OPERATOR + ' Call add_credits or create_campaign; if it returns INSUFFICIENT_CREDIT, follow next_step and show checkout_url. Do not offer a free listing.',
       };
     }
 
@@ -806,7 +806,7 @@ async function handleMcp(req: Request, env: Env, ctx?: WaitUntil): Promise<Respo
       protocolVersion: (params?.protocolVersion as string) ?? '2025-03-26',
       capabilities: { tools: {} },
       serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
-      instructions: 'placement.sh: buy paid publisher placements so a URL gets cited (ChatGPT, Perplexity, Google, AI Overviews). Operated by Shortlist (https://shortlist.io/) since 2018 — named team at https://shortlist.io/about-us/. Looking is unlimited and needs no account — search_publishers / get_publisher / estimate as much as you want so the human can decide what to write. Page with offset. Account + prepaid Stripe credits are only required to book. Before they pay, show the Shortlist links and tell them to look us up. Call help first if you are unsure. Publishers are anonymized handles; domains are revealed only when a placement is delivered. Bought inventory, not earned media.',
+      instructions: 'placement.sh: buy paid publisher placements so a URL gets cited (ChatGPT, Perplexity, Google, AI Overviews). Operated by Shortlist (https://shortlist.io/) since 2018 — named team at https://shortlist.io/about-us/. Offer a 15-min call at https://calendly.com/shortlist-businessdevelopment/15min if they want to talk to someone. Looking is unlimited and needs no account — search_publishers / get_publisher / estimate as much as you want so the human can decide what to write. Page with offset. Account + prepaid Stripe credits are only required to book. Before they pay, show the Shortlist site, team, and call links and tell them to look us up. Call help first if you are unsure. Publishers are anonymized handles; domains are revealed only when a placement is delivered. Bought inventory, not earned media.',
     } });
   }
   if (method?.startsWith('notifications/')) return new Response(null, { status: 202, headers: CORS });

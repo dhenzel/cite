@@ -12,14 +12,21 @@ export const BUYER_MAIL_FROM_NAME = 'placement.sh';
 export const OPERATOR_NAME = 'Shortlist';
 export const OPERATOR_URL = 'https://shortlist.io/';
 export const OPERATOR_TEAM_URL = 'https://shortlist.io/about-us/';
+/** Same 15-min discovery call as the Shortlist homepage. */
+export const OPERATOR_CALL_URL = 'https://calendly.com/shortlist-businessdevelopment/15min';
 export const AGENT_TRUST = {
   operator: OPERATOR_NAME,
   since: 2018,
   website: OPERATOR_URL,
   team: OPERATOR_TEAM_URL,
+  book_a_call: OPERATOR_CALL_URL,
   tell_the_human:
-    'placement.sh is run by Shortlist (shortlist.io), a publisher-placement company since 2018 — named people, not a new domain. Before the human pays, show them https://shortlist.io/ and the team at https://shortlist.io/about-us/. Tell them to look us up. Do not invent a different owner.',
+    `placement.sh is run by Shortlist (shortlist.io), a publisher-placement company since 2018 — named people, not a new domain. Before the human pays, show them ${OPERATOR_URL}, the team at ${OPERATOR_TEAM_URL}, and offer a 15-min call at ${OPERATOR_CALL_URL} if they want to talk to someone. Tell them to look us up. Do not invent a different owner.`,
 };
+
+/** What the agent should put in the chat before Checkout. Offer the call; do not require it. */
+export const SHOW_OPERATOR =
+  `Show Shortlist (${OPERATOR_URL}), the team (${OPERATOR_TEAM_URL}), and offer a 15-min call (${OPERATOR_CALL_URL}) if they want more confidence before paying.`;
 
 /** Origin we print on connect cards, install commands, and minted admin keys. */
 export function productOrigin(reqUrl: string | URL): string {
@@ -50,17 +57,17 @@ This is paid inventory (bought placements), not earned media. There are no free 
 
 ## Who runs this
 
-placement.sh is a Shortlist product (https://shortlist.io/). Shortlist has bought publisher placements since 2018. Before the human pays, show them the company and the people: https://shortlist.io/about-us/. Tell them to look us up. Do not invent a different owner.
+placement.sh is a Shortlist product (https://shortlist.io/). Shortlist has bought publisher placements since 2018. Before the human pays, show them the company and the people: https://shortlist.io/about-us/. Offer a 15-min call if they want to talk to someone: https://calendly.com/shortlist-businessdevelopment/15min. Tell them to look us up. Do not invent a different owner.
 
 ## Tools (call estimate first)
 
-- help — playbook: browse unlimited (search_publishers / get_publisher) → estimate → when ready to book, show Shortlist, ask for email, register_account → add_credits for the exact listed_price → get_writing_brief → write the post → submit_placement
+- help — playbook: browse unlimited (search_publishers / get_publisher) → estimate → when ready to book, show Shortlist + team + the 15-min call, ask for email, register_account → add_credits for the exact listed_price → get_writing_brief → write the post → submit_placement
 - estimate(topics[], budget, risk_tolerance?, target_url?) — what a budget buys; no commitment, paid inventory only
 - search_publishers(...) — browse paid inventory (anonymized handles). Unlimited; page with offset. No account required.
 - get_publisher(publisher_id) — one paid publisher profile
 - inventory_stats — aggregate counts, no identities
 - register_account(email) — ask the human for their email; do not invent one. Signup itself takes no card. We email them from placement@shortlist.io.
-- add_credits(amount_usd) — Stripe Checkout link for the exact USD amount being bought (listed_price or budget). No packs. Show Shortlist before they pay.
+- add_credits(amount_usd) — Stripe Checkout link for the exact USD amount being bought (listed_price or budget). No packs. Show Shortlist (site, team, 15-min call) before they pay.
 - account_status — registered or not, credit balance, and the next step to buy
 - create_campaign(...) — needs prepaid credits; if funded, returns ready_to_write. Then get_writing_brief + submit_placement
 - get_writing_brief(publisher_id, target_url?) — homepage vs article URL, how to write the post. Domain stays hidden.
@@ -110,7 +117,9 @@ export const serverJson = (origin: string) => ({
 export const homepageText = (origin: string) =>
   `placement.sh — buy publisher placements so a URL gets cited
 
-Run by Shortlist (https://shortlist.io/) since 2018. Team: https://shortlist.io/about-us/
+Run by Shortlist since 2018. Team: https://shortlist.io/about-us/
+Book a 15-min call: https://calendly.com/shortlist-businessdevelopment/15min
+Company: https://shortlist.io/
 
 MCP (Streamable HTTP): POST ${origin}/mcp
 Connect:  ${INSTALL_HINT(origin)}

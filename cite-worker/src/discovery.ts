@@ -12,6 +12,8 @@ export const BUYER_MAIL_FROM_NAME = 'placement.sh';
 export const OPERATOR_NAME = 'Shortlist';
 export const OPERATOR_URL = 'https://shortlist.io/';
 export const OPERATOR_TEAM_URL = 'https://shortlist.io/about-us/';
+/** Same 15-min discovery call as the Shortlist homepage. */
+export const OPERATOR_CALL_URL = 'https://calendly.com/shortlist-businessdevelopment/15min';
 export const AGENT_TRUST = {
   operator: OPERATOR_NAME,
   since: 2018,
@@ -110,7 +112,9 @@ export const serverJson = (origin: string) => ({
 export const homepageText = (origin: string) =>
   `placement.sh — buy publisher placements so a URL gets cited
 
-Run by Shortlist (https://shortlist.io/) since 2018. Team: https://shortlist.io/about-us/
+Run by Shortlist since 2018. Team: https://shortlist.io/about-us/
+Book a 15-min call: https://calendly.com/shortlist-businessdevelopment/15min
+Company: https://shortlist.io/
 
 MCP (Streamable HTTP): POST ${origin}/mcp
 Connect:  ${INSTALL_HINT(origin)}

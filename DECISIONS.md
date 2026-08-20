@@ -223,6 +223,12 @@ David: if somebody opens Checkout and does not pull through, we want that visibl
 
 **Decision:** unpaid Stripe Checkout sessions (`checkout_sessions.credited_at IS NULL`) show in `/admin` → Follow-up: email, amount, when they started, whether the Stripe link is still open. Ops copy / mailto from here. No automatic nudge sequence.
 
+## 2026-08-20 — homepage wordmark, team, and a call link
+
+David: the placement.sh homepage should use the Shortlist-colored dot between “placement” and “sh”, and Who runs this should mainly send people to the team page, plus the same Book a call Calendly Shortlist uses on shortlist.io.
+
+**Decision:** wordmark is `placement.sh` with the period in Shortlist mint (`#30D2AD`). Who runs this leads with [the team](https://shortlist.io/about-us/), then a plain link to [Book a 15-min call](https://calendly.com/shortlist-businessdevelopment/15min) (the homepage widget URL, not an embedded popup), then shortlist.io. No auto-book, no Calendly embed. Inter + navy ink so the mint period reads as Shortlist, not a generic teal.
+
 ## Still open
 
 1. **Domain + trademark check for "Cite"** (§13.1) — **closed as a brand**: ship as placement.sh. Cite remains the repo/worker name.

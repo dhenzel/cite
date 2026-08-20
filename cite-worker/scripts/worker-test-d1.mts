@@ -140,8 +140,11 @@ assert(r.status === 200 && (r.headers.get('content-type') ?? '').includes('text/
 assert(home.includes('Buy publisher placements') && home.includes('Claude') && home.includes('ChatGPT') && home.includes('Grok') && home.includes('Kimi') && home.includes('Cursor') && home.includes('Hermes'), 'homepage names the product and agent buttons');
 assert(home.includes('https://placement.sh/mcp') && !home.includes('workers.dev'), 'homepage shows MCP URL, not workers.dev');
 assert(home.includes('https://shortlist.io/') && home.includes('https://shortlist.io/about-us/'), 'homepage links Shortlist and the team page');
+assert(home.includes('https://calendly.com/shortlist-businessdevelopment/15min') && home.includes('Book a 15-min call'), 'homepage links the Shortlist Calendly call');
 assert(home.includes('mailto:placement@shortlist.io') && home.includes('placement@shortlist.io'), 'homepage lists buyer mail as placement@shortlist.io');
 assert(/Who runs this/.test(home) && /A <a href="https:\/\/shortlist\.io\/">Shortlist<\/a> product/.test(home) && /since 2018/.test(home), 'homepage explains Shortlist as the operator');
+assert(home.includes('placement<span class="dot">.</span>sh'), 'wordmark uses a Shortlist-colored dot between placement and sh');
+assert(home.indexOf('Meet the team') < home.indexOf('Book a 15-min call'), 'Who runs this leads with the team, then the call');
 assert(home.includes('data-client="hermes"') && home.includes('hermes mcp add placement --url'), 'Hermes is an add-to-agent option');
 assert(!/free listing/i.test(home), 'homepage does not talk about free listings');
 assert(!home.includes('window.open') && !home.includes('cursor://') && !/https:\/\/(claude\.ai|chatgpt\.com|grok\.com)\//.test(home), 'agent buttons stay on-page and do not deep-link out');

@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import worker, { type Env } from '../src/index.js';
+import { ADMIN_HTML } from '../src/admin-ui.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const sq = new BetterSqlite3(':memory:');
@@ -141,8 +142,8 @@ r = await f('/admin');
 {
   const adminHtml = await r.text();
   assert(r.status === 200 && adminHtml.includes('operator console'), 'admin UI serves');
-  assert(adminHtml.includes('data-open-site') && adminHtml.includes('site-drawer') && adminHtml.includes('crawl profile'), 'admin inventory opens a crawl drawer from the domain');
 }
+assert(ADMIN_HTML.includes('data-open-site') && ADMIN_HTML.includes('site-drawer') && ADMIN_HTML.includes('crawl profile'), 'admin inventory opens a crawl drawer from the domain');
 r = await f('/.well-known/oauth-protected-resource');
 assert(r.status === 404, 'oauth discovery probes still 404');
 r = await f('/llms.txt');

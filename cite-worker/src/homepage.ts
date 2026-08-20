@@ -196,7 +196,7 @@ export const homepageHtml = (origin: string): string => {
   <ol>
     <li><strong>Add this MCP</strong> to Claude, ChatGPT, Grok, Kimi, Cursor, Hermes, or any agent that speaks MCP.</li>
     <li><strong>Ask the agent to estimate</strong> — URL, topics, budget. No card required to look. The agent should tell you this is Shortlist before you pay.</li>
-    <li><strong>To buy</strong>, the agent asks for a contact email, then prepaid credits.</li>
+    <li><strong>To buy</strong>, the agent asks for a contact email, then opens a Stripe Checkout link for prepaid credits.</li>
   </ol>
 
   <h2>Add to your agent</h2>

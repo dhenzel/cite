@@ -13,11 +13,11 @@ This is the shortest path that takes real money, lets a customer’s agent write
 | Piece | State today |
 |---|---|
 | Inventory in D1 (`cite-v0`) | ~9k publishers, prices, contacts |
-| Public MCP | `estimate` / `search_publishers` / `get_publisher` / `register_account` / `create_campaign`. **Paid inventory only** — no `claim_free_placement`, no $0 / self-serve listings |
-| `create_campaign` | stub — always returns `INSUFFICIENT_CREDIT` |
-| Stripe | column `accounts.stripe_customer_id` exists; no Checkout, no webhooks, no balance |
+| Public MCP | `estimate` / `search_publishers` / `get_publisher` / `register_account` / `add_credits` / `account_status` / `create_campaign`. **Paid inventory only** — no `claim_free_placement`, no $0 / self-serve listings |
+| `create_campaign` | `ACCOUNT_REQUIRED` or `INSUFFICIENT_CREDIT` (+ Checkout when Stripe secrets are set). Funded accounts get `FULFILLMENT_NOT_LIVE` until the allocator ships |
+| Stripe | Worker implements wallet + Checkout + webhook. Live keys + D1 migration + Dashboard webhook still required. Tag `metadata.product=placement.sh` |
 | `site_content` | table exists; ~11 demo rows; `cite-mcp/src/enrich.ts` fetches homepage + RSS and stores a **brand-scrubbed** summary. Most inventory is still just a niche tag (“Tech”) |
-| Buyer emails | none |
+| Buyer emails | `account.created` on new `register_account`; `credits.added` after Checkout |
 | Operator outreach | specced as Gmail drafts (§8); not built |
 | Agent-submitted posts | specced as finished markdown (§6); not built |
 
@@ -241,7 +241,7 @@ Reads the draft, actually edits, sends. Marks `outreach_sent` / `site_accepted` 
 
 ## 5. Build order (do not parallelize the money path)
 
-1. **Wallet + Stripe Checkout + webhook + `add_credits` / richer `account_status`.** Internal $50 pack test. Buyer email `credits.added` + `account.created`.
+1. **Wallet + Stripe Checkout + webhook + `add_credits` / richer `account_status`.** **Shipped 2026-08-19** on the Worker (test keys first, then live). Internal $50 pack still required before flipping `sk_live`. Buyer email `credits.added` + `account.created`. `create_campaign` still does not allocate publishers (`FULFILLMENT_NOT_LIVE` when funded).
 2. **Enrichment pipeline** on the top ~500 score sites (enough for briefs to be real), then the rest. Wire `get_writing_brief` and richer `get_publisher.content_summary`.
 3. **`submit_placement` + auto-screen + D1 `orders` + hold.** MCP errors the agent can act on.
 4. **Gmail drafts** into the Shortlist inbox + console order list.

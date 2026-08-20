@@ -87,7 +87,7 @@ export function welcomeMail(env: MailEnv, buyerEmail: string): OutboundMail {
       `  hermes mcp add placement --url https://mcp.placement.sh/mcp`,
       ``,
       `Looking at publishers is free and needs no card. Booking uses prepaid credits.`,
-      `Stripe Checkout is not live yet — we will email you from this address when you can pay.`,
+      `Ask your agent to call add_credits, then open the Stripe Checkout link. We email you from this address when credits land.`,
       ``,
       `Questions? Reply to this message.`,
       ``,
@@ -122,6 +122,46 @@ export async function notifyAccountCreated(env: MailEnv, buyerEmail: string): Pr
     jobs.push(sendMailBestEffort(env, { ...opsBody, to }));
   }
   await Promise.all(jobs);
+}
+
+export function creditsAddedMail(
+  env: MailEnv,
+  buyerEmail: string,
+  amountCents: number,
+  availableCents: number,
+): OutboundMail {
+  const usd = (n: number) => `$${(n / 100).toFixed(2)}`;
+  return {
+    to: buyerEmail,
+    subject: `${usd(amountCents)} credits added to your placement.sh account`,
+    text: [
+      `${usd(amountCents)} in prepaid credits was added to ${buyerEmail}.`,
+      ``,
+      `Available now: ${usd(availableCents)}.`,
+      `Go back to your agent and say “paid”.`,
+      ``,
+      `placement.sh is a ${OPERATOR_NAME} product. ${OPERATOR_NAME} has bought publisher placements since 2018.`,
+      `Company: ${OPERATOR_URL}`,
+      `Team: ${OPERATOR_TEAM_URL}`,
+      ``,
+      `Questions? Reply to this message.`,
+      ``,
+      `—`,
+      `placement.sh · a ${OPERATOR_NAME} product`,
+      mailFromAddress(env),
+      PRODUCT_ORIGIN,
+    ].join('\n'),
+  };
+}
+
+export async function notifyCreditsAdded(
+  env: MailEnv,
+  buyerEmail: string,
+  amountCents: number,
+  availableCents: number,
+): Promise<void> {
+  if (!mailConfigured(env) || !buyerEmail) return;
+  await sendMailBestEffort(env, creditsAddedMail(env, buyerEmail, amountCents, availableCents));
 }
 
 export async function sendMailBestEffort(env: MailEnv, mail: OutboundMail): Promise<void> {

@@ -176,7 +176,7 @@ let toolsListRes = await f('/mcp', { method: 'POST', headers: { 'content-type': 
   body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) });
 const toolNames = (await toolsListRes.json()).result.tools.map((t: { name: string }) => t.name);
 assert(!toolNames.includes('claim_free_placement'), 'claim_free_placement is not advertised');
-assert(toolNames.includes('create_campaign') && toolNames.includes('register_account'), 'paid booking tools remain');
+assert(toolNames.includes('create_campaign') && toolNames.includes('register_account') && toolNames.includes('add_credits'), 'paid booking tools remain');
 
 let gone = await call('claim_free_placement', { publisher_id: 'cs_free00self01', target_url: 'https://buyer.test/pricing' });
 assert(gone.error === 'TOOL_REMOVED', 'old clients calling claim_free_placement get TOOL_REMOVED');
@@ -206,6 +206,7 @@ s = await call('search_publishers', {}, apiKey);
 assert(s.looking === 'unlimited', 'account key does not change looking — already unlimited');
 let st = await call('account_status', {}, apiKey);
 assert(st.tier === 'registered' && st.looking === 'unlimited' && !('free_placements_remaining' in st), 'account_status has no free-placement quota and unlimited looking');
+assert(st.funded === false && st.available_cents === 0 && st.held_cents === 0, 'new account is unfunded');
 
 let h = await call('help');
 assert(h.call_first === 'estimate' && h.product === 'placement.sh', 'help orients agents');
@@ -722,4 +723,149 @@ console.log('\nall admin-key checks passed');
 
   globalThis.fetch = prevFetch;
   console.log('\nall signup-mail checks passed');
+}
+
+// ---------- prepaid Stripe credits ----------
+{
+  r = await f('/paid');
+  assert(r.status === 200 && (await r.text()).includes('Credits added'), 'GET /paid is a simple landing page');
+  r = await f('/paid?canceled=1');
+  assert((await r.text()).includes('Payment canceled'), 'canceled Checkout lands on the same page with different copy');
+
+  let pay = await call('add_credits', { amount_usd: 50 });
+  assert(pay.error === 'ACCOUNT_REQUIRED', 'add_credits without an account asks for email');
+
+  pay = await call('add_credits', { amount_usd: 50 }, apiKey);
+  assert(pay.error === 'STRIPE_NOT_CONFIGURED', 'add_credits without Stripe secrets does not invent a URL');
+  assert(!pay.checkout_url, 'no checkout_url when Stripe is missing');
+  camp = await call('create_campaign', { target_url: 'https://buyer.test', topics: ['finance'], budget: 4000 }, apiKey);
+  assert(camp.error === 'INSUFFICIENT_CREDIT' && /do not offer/i.test(camp.next_step), 'INSUFFICIENT_CREDIT without Stripe still forbids a free listing');
+  assert(/shortlist\.io/i.test(camp.next_step) && /about-us/i.test(camp.next_step), 'payment step still names Shortlist');
+
+  const stripeCalls: { url: string; body: string; headers: Record<string, string> }[] = [];
+  const prevFetch2 = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url;
+    if (url.startsWith('https://api.stripe.com/v1/checkout/sessions')) {
+      const body = typeof init?.body === 'string'
+        ? init.body
+        : init?.body instanceof URLSearchParams
+          ? init.body.toString()
+          : '';
+      stripeCalls.push({ url, body, headers: (init?.headers ?? {}) as Record<string, string> });
+      const n = stripeCalls.length;
+      return new Response(JSON.stringify({
+        id: `cs_test_${n}`,
+        url: `https://checkout.stripe.com/c/pay/cs_test_${n}`,
+        expires_at: Math.floor(Date.now() / 1000) + 3600,
+      }), { headers: { 'content-type': 'application/json' } });
+    }
+    return prevFetch2(input, init);
+  }) as typeof fetch;
+
+  const stripeEnv: Env = {
+    ...env,
+    STRIPE_SECRET_KEY: 'sk_test_fake',
+    STRIPE_WEBHOOK_SECRET: 'whsec_test',
+  };
+  const mcpPay = (name: string, args: Record<string, unknown>, key?: string) => worker.fetch(new Request('https://cite.test/mcp', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      ...(key ? { authorization: `Bearer ${key}` } : {}),
+    },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }),
+  }), stripeEnv);
+  const parsePay = async (res: Response) => JSON.parse((await res.json()).result.content[0].text);
+
+  let pr = await mcpPay('register_account', { email: 'payer@customer.test' });
+  const payer = await parsePay(pr);
+  stripeCalls.length = 0;
+  pr = await mcpPay('add_credits', { amount_usd: 60, idempotency_key: 'pack-1' }, payer.api_key);
+  const checkout = await parsePay(pr);
+  assert(checkout.checkout_url?.startsWith('https://checkout.stripe.com/'), 'add_credits returns a Checkout URL');
+  assert(checkout.amount_usd === 150, 'amount 60 snaps up to the $150 pack');
+  assert(checkout.session_id === 'cs_test_1', 'session id from Stripe');
+  assert(/shortlist\.io\/about-us/.test(checkout.next_step), 'Checkout next_step names the team page');
+  assert(stripeCalls[0].body.includes('metadata%5Bproduct%5D=placement.sh') || stripeCalls[0].body.includes('metadata[product]=placement.sh'),
+    'Checkout Session is tagged product=placement.sh');
+
+  pr = await mcpPay('add_credits', { amount_usd: 60, idempotency_key: 'pack-1' }, payer.api_key);
+  const againCk = await parsePay(pr);
+  assert(againCk.session_id === checkout.session_id && stripeCalls.length === 1, 'same idempotency_key reuses the open session');
+
+  pr = await mcpPay('create_campaign', { target_url: 'https://buyer.test', topics: ['finance'], budget: 4000 }, payer.api_key);
+  const unpaidCamp = await parsePay(pr);
+  assert(unpaidCamp.error === 'INSUFFICIENT_CREDIT' && unpaidCamp.checkout_url?.startsWith('https://checkout.stripe.com/'),
+    'create_campaign includes a Checkout URL when Stripe is configured');
+  assert(/shortlist\.io\/about-us/.test(unpaidCamp.next_step), 'funded-path Checkout still names Shortlist');
+
+  const event = {
+    type: 'checkout.session.completed',
+    data: {
+      object: {
+        id: checkout.session_id,
+        payment_status: 'paid',
+        amount_total: 15000,
+        customer: 'cus_test',
+        metadata: { product: 'placement.sh', api_key: payer.api_key, email: 'payer@customer.test' },
+        client_reference_id: payer.api_key,
+      },
+    },
+  };
+  const payload = JSON.stringify(event);
+  const t = Math.floor(Date.now() / 1000);
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey('raw', enc.encode('whsec_test'), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const mac = new Uint8Array(await crypto.subtle.sign('HMAC', key, enc.encode(`${t}.${payload}`)));
+  const hex = [...mac].map((b) => b.toString(16).padStart(2, '0')).join('');
+  const sig = `t=${t},v1=${hex}`;
+
+  r = await worker.fetch(new Request('https://cite.test/webhooks/stripe', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'stripe-signature': 't=1,v1=dead' },
+    body: payload,
+  }), stripeEnv);
+  assert(r.status === 400, 'bad Stripe signature is rejected');
+
+  r = await worker.fetch(new Request('https://cite.test/webhooks/stripe', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'stripe-signature': sig },
+    body: payload,
+  }), stripeEnv);
+  const credited = await r.json();
+  assert(r.status === 200 && credited.credited === true, 'valid webhook credits the wallet');
+
+  r = await worker.fetch(new Request('https://cite.test/webhooks/stripe', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'stripe-signature': sig },
+    body: payload,
+  }), stripeEnv);
+  assert((await r.json()).credited === false, 'replayed webhook does not double-credit');
+
+  pr = await mcpPay('account_status', {}, payer.api_key);
+  st = await parsePay(pr);
+  assert(st.funded === true && st.available_cents === 15000, 'account_status shows the credited pack');
+
+  pr = await mcpPay('create_campaign', { target_url: 'https://buyer.test', topics: ['finance'], budget: 50 }, payer.api_key);
+  const fundedCamp = await parsePay(pr);
+  assert(fundedCamp.error === 'FULFILLMENT_NOT_LIVE', 'funded create_campaign does not pretend booking is live');
+  assert(fundedCamp.available_cents === 15000, 'funded campaign response still reports the balance');
+  assert(/do not offer a free listing/i.test(fundedCamp.next_step), 'fulfillment stub still forbids a free listing');
+
+  const other = JSON.stringify({
+    type: 'checkout.session.completed',
+    data: { object: { id: 'cs_other', payment_status: 'paid', amount_total: 999, metadata: { product: 'shortlist-other' } } },
+  });
+  const mac2 = new Uint8Array(await crypto.subtle.sign('HMAC', key, enc.encode(`${t}.${other}`)));
+  const hex2 = [...mac2].map((b) => b.toString(16).padStart(2, '0')).join('');
+  r = await worker.fetch(new Request('https://cite.test/webhooks/stripe', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'stripe-signature': `t=${t},v1=${hex2}` },
+    body: other,
+  }), stripeEnv);
+  assert((await r.json()).credited === false, 'webhooks ignore non-placement.sh Stripe sessions');
+
+  globalThis.fetch = prevFetch2;
+  console.log('\nall stripe-credits checks passed');
 }

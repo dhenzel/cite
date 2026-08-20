@@ -44,8 +44,24 @@ CREATE TABLE IF NOT EXISTS accounts (
   created_at TEXT,
   orders_used INTEGER DEFAULT 0,
   quota INTEGER DEFAULT 10,
-  stripe_customer_id TEXT
+  stripe_customer_id TEXT,
+  available_cents INTEGER NOT NULL DEFAULT 0,
+  held_cents INTEGER NOT NULL DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS checkout_sessions (
+  session_id TEXT PRIMARY KEY,
+  api_key TEXT NOT NULL,
+  email TEXT,
+  amount_cents INTEGER NOT NULL,
+  checkout_url TEXT,
+  idempotency_key TEXT,
+  expires_at TEXT,
+  created_at TEXT,
+  credited_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_checkout_api_key ON checkout_sessions(api_key);
+CREATE INDEX IF NOT EXISTS idx_checkout_idem ON checkout_sessions(api_key, idempotency_key);
 
 CREATE TABLE IF NOT EXISTS free_orders (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

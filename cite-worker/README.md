@@ -3,7 +3,9 @@
 Cloudflare Worker serving:
 
 - **`GET /`** — minimal landing page (HTML for browsers, plaintext for agents).
-- **`POST /mcp`** — public MCP (Streamable HTTP): `help`, `estimate`, `search_publishers`, `get_publisher`, `inventory_stats`, `register_account`, `account_status`, `create_campaign`. Paid inventory only. Whitelisted fields — domains, contacts, seller prices, and markup are never serialized here (blind placements).
+- **`POST /mcp`** — public MCP (Streamable HTTP): `help`, `estimate`, `search_publishers`, `get_publisher`, `inventory_stats`, `register_account`, `add_credits`, `account_status`, `create_campaign`. Paid inventory only.
+- **`GET /paid`** — post-Checkout landing (“credits added — go back to your agent and say paid”).
+- **`POST /webhooks/stripe`** — credits the wallet on `checkout.session.completed` when `metadata.product=placement.sh`.
 - **`GET /llms.txt`**, **`GET /.well-known/mcp/server.json`** — agent discovery.
 - **`/admin`** — operator console: full inventory with seller price, markup, listed price and margin. Guarded by Shortlist SSO / `ADMIN_TOKEN`.
 
@@ -47,6 +49,26 @@ npx wrangler secret put GMAIL_REFRESH_TOKEN
 ```
 
 If Gmail is not ready, `RESEND_API_KEY` is the fallback (verify `shortlist.io` on Resend). Signup still works if neither is set.
+
+Prepaid credits use **Shortlist’s existing Stripe** (restricted key). Tag is `metadata.product=placement.sh`. Do not open a new Stripe account. The Worker only needs Checkout Sessions write + Customers write — it must not see the rest of Shortlist’s Stripe.
+
+```bash
+npx wrangler d1 execute cite-v0 --remote --file=migrations/005_wallet.sql
+npx wrangler secret put STRIPE_SECRET_KEY          # start sk_test_ / rk_test_; later live restricted
+npx wrangler secret put STRIPE_WEBHOOK_SECRET      # from the webhook endpoint (test mode has its own secret)
+npx wrangler deploy --keep-vars
+```
+
+If the ALTERs in `005_wallet.sql` say the column already exists, skip them and run only the `CREATE TABLE checkout_sessions` statements.
+
+Stripe Dashboard (same Shortlist account):
+
+- Webhook URL: `https://placement.sh/webhooks/stripe`
+- Events: `checkout.session.completed`, `checkout.session.async_payment_succeeded`
+- Success URL (already in code): `https://placement.sh/paid?session_id={CHECKOUT_SESSION_ID}`
+- Checkout branding / statement descriptor: **PLACEMENT.SH** (not Shortlist)
+
+Test with a $50 pack in Stripe **test mode** first, then one internal live $50 pack, then leave live keys in place.
 
 ## Tests
 

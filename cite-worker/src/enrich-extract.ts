@@ -14,7 +14,7 @@ Return ONLY JSON (no markdown) with this shape:
   "do": "what a guest post must include to fit",
   "dont": "angles they clearly don’t run",
   "summary_private": "120–180 words, brand names OK",
-  "summary_public": "80–120 words, no brand, no domain, no author names — as if describing a nameless publisher"
+  "summary_public": "80–120 words, no brand, no domain, no author names, no unique tagline, no city+masthead combo that googles the publisher — as if describing a nameless publisher"
 }`;
 
 export type LlmProfile = {
@@ -41,21 +41,50 @@ const STOP = new Set(
   'the a an and or for with your you how what why best top guide tips from this that are is to of in on it its can new all more get make need know will should about into after before every their they them have has been were was been our also when where which than then just only into over under into using used use into into homepage blog news latest read more click here privacy policy cookie terms contact subscribe follow share tweet'.split(' '),
 );
 
+const GENERIC_SLD = new Set(
+  'best home blog news info life tech data time more mail shop city world daily press media online digital today site web net org app'.split(' '),
+);
+
+/** Domain / SLD tokens that must never appear on buyer MCP text. */
+export function brandTokens(domain: string): string[] {
+  const root = domain.toLowerCase().replace(/^www\./, '');
+  const base = root.split('.')[0] || '';
+  const compact = base.replace(/-/g, '');
+  const out = [root];
+  if (base.length >= 4 && !GENERIC_SLD.has(base)) out.push(base);
+  if (compact.length >= 4 && compact !== base && !GENERIC_SLD.has(compact)) out.push(compact);
+  return [...new Set(out.filter(Boolean))];
+}
+
 export function scrub(text: string, domain: string): string {
   const root = domain.toLowerCase().replace(/^www\./, '');
-  const base = root.split('.')[0];
+  const base = root.split('.')[0] || '';
+  const compact = base.replace(/-/g, '');
   let out = text;
   out = out.replace(new RegExp(`(https?://)?(www\\.)?${escapeRe(root)}`, 'gi'), '[site]');
-  if (base.length >= 5) {
-    out = out.replace(new RegExp(escapeRe(base), 'gi'), '[site]');
-    const spaced = out.replace(/\s+/g, '').toLowerCase();
-    if (spaced.includes(base)) {
-      out = out.replace(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\b/g, (m) =>
-        m.replace(/\s+/g, '').toLowerCase() === base ? '[site]' : m,
-      );
+  for (const tok of brandTokens(domain)) {
+    if (tok.includes('.')) continue;
+    if (tok.length >= 8) {
+      out = out.replace(new RegExp(escapeRe(tok), 'gi'), '[site]');
+    } else if (tok.length >= 4) {
+      out = out.replace(new RegExp(`\\b${escapeRe(tok)}\\b`, 'gi'), '[site]');
     }
   }
-  return out;
+  if (base.includes('-')) {
+    out = out.replace(new RegExp(base.split('-').map(escapeRe).join('[\\s-]+'), 'gi'), '[site]');
+  }
+  if (compact.length >= 4 && !GENERIC_SLD.has(compact)) {
+    out = out.replace(/\b[A-Z][a-z]+(?:[\s-]+[A-Z][a-z]+){0,3}\b/g, (m) => {
+      const words = m.split(/[\s-]+/);
+      for (let i = 0; i < words.length; i++) {
+        if (words.slice(i).join('').toLowerCase() === compact) {
+          return [...words.slice(0, i), '[site]'].join(' ');
+        }
+      }
+      return m;
+    });
+  }
+  return out.replace(/\s+/g, ' ').trim();
 }
 
 function escapeRe(s: string): string {
@@ -216,12 +245,32 @@ export function crawlSummary(opts: {
 }
 
 export function leaksDomain(text: string, domain: string): boolean {
-  const root = domain.toLowerCase().replace(/^www\./, '');
-  const base = root.split('.')[0];
-  const hay = text.toLowerCase();
-  if (hay.includes(root)) return true;
-  if (base.length >= 5 && hay.includes(base)) return true;
+  const hay = text.toLowerCase().replace(/[\s-]+/g, '');
+  const raw = text.toLowerCase();
+  for (const tok of brandTokens(domain)) {
+    if (raw.includes(tok)) return true;
+    if (tok.length >= 4 && hay.includes(tok.replace(/-/g, ''))) return true;
+  }
   return false;
+}
+
+/** Buyer MCP text: scrub brand tokens and drop the field if it still leaks. */
+export function buyerPublicText(raw: string | null | undefined, domain: string): string | undefined {
+  if (raw == null || raw === '') return undefined;
+  const s = scrub(String(raw), domain);
+  if (!s || /^\[site\][\s–—:\-]*$/.test(s) || leaksDomain(s, domain)) return undefined;
+  return s;
+}
+
+export function buyerPublicList(items: unknown, domain: string, limit = 12): string[] | undefined {
+  const list = Array.isArray(items)
+    ? items.map((x) => String(x).trim()).filter(Boolean)
+    : [];
+  const out = list
+    .map((t) => scrub(t, domain))
+    .filter((t) => t && t !== '[site]' && !leaksDomain(t, domain))
+    .slice(0, limit);
+  return out.length ? out : undefined;
 }
 
 export function parseLlmProfile(raw: string, domain: string): LlmProfile | null {

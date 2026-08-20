@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {
+  buyerPublicText,
   crawlSummary,
   extractRssTitles,
   extractTitles,
@@ -42,6 +43,17 @@ assert(!/secretexample/i.test(summary), 'crawl summary scrubs the domain');
 assert(summary.includes('[site]'), 'scrub replaces the brand token');
 assert(leaksDomain('visit secretexample.com today', domain), 'leak detector sees the domain');
 assert(!leaksDomain(scrub('visit secretexample.com today', domain), domain), 'scrubbed text does not leak');
+
+{
+  const kake = scrub('KAKE delivers Wichita news', 'kake.com');
+  assert(!/kake/i.test(kake), 'short SLD brand is scrubbed as a whole word');
+  assert(leaksDomain('KAKE delivers Wichita news', 'kake.com'), 'leak detector sees a 4-letter brand token');
+  const hyphen = scrub('Visit Secret Example at secret-example.com', 'secret-example.com');
+  assert(!/secret-example|secret example/i.test(hyphen), 'hyphenated domain and spaced brand are scrubbed');
+  assert(buyerPublicText('Secret Example covers payroll.', 'secret-example.com') === undefined
+    || !/secret/i.test(buyerPublicText('Secret Example covers payroll.', 'secret-example.com') || ''),
+    'buyerPublicText drops leftover brand');
+}
 
 const robots = parseRobots('User-agent: *\nDisallow: /wp-admin/\nDisallow: /');
 assert(pathDisallowed('/', robots.disallow), 'Disallow: / blocks the homepage');

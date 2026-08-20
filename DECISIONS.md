@@ -241,6 +241,12 @@ David: enrich publishers with what they write about and recent posts so an agent
 - D1 migration `009_enrich_profile.sql` adds audience / tone / post_shape / typical_length_words / do_fit / dont_fit / summary_private / enrich_status. `summary_private` is operator-only.
 - Highest `cite_score` first. Resume skips `enrich_status=ok`. Ahrefs ranking keywords stay a second pass.
 
+## 2026-08-20 — buyer MCP descriptions must not identify the publisher
+
+David: the site description must not leak which publisher it is via MCP.
+
+**Decision:** `search_publishers` / `get_publisher` / `get_writing_brief` re-scrub every public text field at read time and drop the field if a domain or registered-name token remains. Exact `recent_post_titles` stay off the buyer MCP (they google the masthead). Writing-brief `example_angles` come from topics, not quoted headlines. `summary_private` stays operator-only.
+
 ## Still open
 
 1. **Domain + trademark check for "Cite"** (§13.1) — **closed as a brand**: ship as placement.sh. Cite remains the repo/worker name.

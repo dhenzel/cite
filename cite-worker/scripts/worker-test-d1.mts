@@ -15,7 +15,7 @@ sq.exec(`
          ('cs_ccc333ddd444', 'hidden-blog.net', 'ed@hidden-blog.net', 'Tech', 50, 1.6, 80, 62, '1k–5k/mo', 'active', 'unknown');
   INSERT INTO site_content (site_id, summary, writes_about, recent_titles, audience, tone, post_shape, typical_length_words, do_fit, dont_fit, enrich_status, source)
   VALUES
-    ('cs_aaa111bbb222', 'B2B finance guides for operators.', '["finance","b2b"]',
+    ('cs_aaa111bbb222', 'Secret Example covers B2B finance guides for operators at secret-example.com.', '["finance","b2b","Secret Example"]',
      '["How operators run monthly close","Invoice terms that get paid"]',
      'Operators who need practical finance ops writing.', 'practitioner', 'how-to', 900,
      'Include a concrete close or invoicing example.', 'Do not pitch crypto trading.',
@@ -208,6 +208,9 @@ assert(typeof g.metrics_attribution === 'string', 'Ahrefs attribution present');
 assert(!g.score_components || !('trust' in g.score_components), 'no Majestic trust on buyer score_components');
 assert(g.placement_score === 88 && !('cite_score' in g) && !('site_id' in g), 'public fields use publisher/placement_score');
 assert(!JSON.stringify(g).includes('secret-example'), 'domain still blind in get_publisher');
+assert(!/secret example/i.test(JSON.stringify(g)), 'get_publisher description does not leak the brand name');
+assert(!('recent_post_titles' in g) || g.recent_post_titles == null, 'get_publisher does not return exact headlines');
+assert(typeof g.content_summary === 'string' && /B2B finance/i.test(g.content_summary), 'get_publisher keeps a scrubbed description');
 assert(!('cost_type' in g) && !('acquisition_mode' in g), 'buyer payload does not advertise free/self-serve modes');
 
 // free sites never appear on the buyer MCP
@@ -952,7 +955,8 @@ console.log('\nall admin-key checks passed');
   assert(brief.audience && /operators/i.test(brief.audience), 'writing brief includes crawl audience');
   assert(brief.tone === 'practitioner' && brief.post_shape === 'how-to', 'writing brief includes tone and post shape');
   assert(brief.do && brief.dont && brief.typical_length_words === 900, 'writing brief includes do/dont and typical length');
-  assert((brief.example_angles || []).some((x: string) => /monthly close/i.test(x)), 'example angles come from recent titles');
+  assert((brief.example_angles || []).some((x: string) => /finance|b2b/i.test(x)), 'example angles come from topics, not exact headlines');
+  assert(!(brief.example_angles || []).some((x: string) => /monthly close/i.test(x)), 'writing brief does not quote recent headlines');
 
   brief = await call('get_writing_brief', { publisher_id: 'cs_aaa111bbb222', target_url: 'https://contextengine.com/docs/overview' });
   assert(brief.link?.kind === 'article' && brief.link?.to === 'https://contextengine.com/docs/overview', 'article target is recorded on the brief');

@@ -2,7 +2,7 @@
  * Writing brief + inbound post screen. Buyer tools stay blind (no domain).
  * Ops mail /admin can see the publisher domain.
  */
-import { scrub } from './enrich-extract.js';
+import { buyerPublicList, buyerPublicText } from './enrich-extract.js';
 
 export type BuyerSite = {
   id: string;
@@ -60,15 +60,8 @@ function linkKind(targetUrl: string | undefined): 'homepage' | 'article' | 'unkn
   }
 }
 
-function pubText(raw: string | null | undefined, domain: string): string | undefined {
-  if (!raw) return undefined;
-  const s = scrub(String(raw), domain).replace(/\s+/g, ' ').trim();
-  return s || undefined;
-}
-
 export function writingBrief(site: BuyerSite, targetUrl?: string) {
-  const topics = parseJsonList(site.writes_about).map((t) => scrub(t, site.domain)).filter(Boolean).slice(0, 12);
-  const titles = parseJsonList(site.recent_titles).map((t) => scrub(t, site.domain)).filter(Boolean).slice(0, 5);
+  const topics = buyerPublicList(parseJsonList(site.writes_about), site.domain, 12) ?? [];
   const kind = linkKind(targetUrl);
   const typical = Number(site.typical_length_words);
   const minWords = Number.isFinite(typical) && typical > 700 ? Math.round(typical) : 700;
@@ -80,16 +73,17 @@ export function writingBrief(site: BuyerSite, targetUrl?: string) {
     niche: site.niche,
     subniche: site.subniche || undefined,
     placement_score: site.cite_score,
-    content_summary: pubText(site.summary, site.domain),
-    audience: pubText(site.audience, site.domain),
-    tone: pubText(site.tone, site.domain),
-    post_shape: pubText(site.post_shape, site.domain),
+    content_summary: buyerPublicText(site.summary, site.domain),
+    audience: buyerPublicText(site.audience, site.domain),
+    tone: buyerPublicText(site.tone, site.domain),
+    post_shape: buyerPublicText(site.post_shape, site.domain),
     typical_length_words: Number.isFinite(typical) && typical > 0 ? Math.round(typical) : undefined,
-    do: pubText(site.do_fit, site.domain),
-    dont: pubText(site.dont_fit, site.domain),
+    do: buyerPublicText(site.do_fit, site.domain),
+    dont: buyerPublicText(site.dont_fit, site.domain),
     topics: topics.length ? topics : undefined,
-    example_angles: titles.length
-      ? titles.map((t) => `A post in the same neighborhood as “${t}” — do not copy it.`)
+    // Topics only — exact recent headlines fingerprint the publisher if googled.
+    example_angles: topics.length
+      ? topics.slice(0, 3).map((t) => `A finished post on ${t} that this publisher’s readers would already expect.`)
       : ['A practical explainer the publisher’s readers would already expect in this niche.'],
     link: {
       attribute: site.link_attribute || 'unknown',

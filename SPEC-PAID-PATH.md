@@ -196,7 +196,7 @@ Returned to buyers (still blind):
 - `do` / `dont`
 - `content_summary` (public)
 - `max_links_per_post`, `link_attribute`, `min_word_count` (from `typical_length_words` or site override)
-- `example_angles` — 3 bullets derived from recent (scrubbed) titles, not the titles themselves if they leak brand
+- `example_angles` — 3 bullets derived from topics, never exact recent headlines (those fingerprint the publisher)
 
 This is enough to write a fitting post without knowing the domain.
 

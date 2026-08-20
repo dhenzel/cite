@@ -27,6 +27,7 @@ import { notifyAccountCreated, notifyCreditsAdded, notifyPlacementSubmitted, sch
 import {
   applyCheckoutPaid, openCheckout, paidPageHtml, chargeCents, verifyStripeSignature,
 } from './stripe.js';
+import { buyerPublicList, buyerPublicText } from './enrich-extract.js';
 import { listedPriceCents, loadBuyerSite, screenPost, wordCount, writingBrief, bodyHash } from './placement.js';
 
 export interface Env {
@@ -133,7 +134,19 @@ const isBuyerPublisher = (r: Row): boolean =>
   && typeof r.listed_price === 'number' && r.listed_price > 0
   && (r.acquisition_mode ?? 'paid_placement') === 'paid_placement';
 
+const parseTopicList = (raw: unknown): string[] => {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw.map((x) => String(x));
+  try {
+    const v = JSON.parse(String(raw));
+    return Array.isArray(v) ? v.map((x) => String(x)) : [];
+  } catch {
+    return [];
+  }
+};
+
 const pub = (r: Row, detail = false) => {
+  const domain = String(r.domain || '');
   const base: Row = {
     publisher_id: r.id,
     placement_score: r.cite_score,
@@ -146,7 +159,7 @@ const pub = (r: Row, detail = false) => {
     traffic_band: r.traffic_band,
     listed_price: r.listed_price,
     link_attribute: r.link_attribute ?? 'unknown',
-    writes_about: r.writes_about ? JSON.parse(r.writes_about as string) : undefined,
+    writes_about: buyerPublicList(parseTopicList(r.writes_about), domain),
   };
   if (!detail) return base;
   return {
@@ -156,13 +169,13 @@ const pub = (r: Row, detail = false) => {
     max_links_per_post: r.max_links_per_post ?? 'unknown',
     turnaround_sla_days: r.turnaround_sla_days ?? 'unknown',
     how_this_works: 'Paid placement fulfilled by placement.sh. Prepaid credits required to book.',
-    content_summary: r.summary ?? undefined,
-    audience: r.audience ?? undefined,
-    tone: r.tone ?? undefined,
-    post_shape: r.post_shape ?? undefined,
-    recent_post_titles: r.recent_titles ? JSON.parse(r.recent_titles as string) : undefined,
+    content_summary: buyerPublicText(typeof r.summary === 'string' ? r.summary : undefined, domain),
+    audience: buyerPublicText(typeof r.audience === 'string' ? r.audience : undefined, domain),
+    tone: buyerPublicText(typeof r.tone === 'string' ? r.tone : undefined, domain),
+    post_shape: buyerPublicText(typeof r.post_shape === 'string' ? r.post_shape : undefined, domain),
+    // Exact headlines fingerprint the publisher if googled. Writing brief uses topics.
     metrics_attribution: 'Ahrefs Site Explorer overview: Domain Rating, organic traffic, organic keywords, referring domains, backlinks, Ahrefs Rank, organic value — official names, when we have them. Moz DA and Majestic TF/CF are not shown.',
-    note: 'Publisher domain is revealed as published_url when the placement is delivered (blind placements).',
+    note: 'Publisher domain is revealed as published_url when the placement is delivered (blind placements). Descriptions stay brand-scrubbed so the handle cannot be reverse-searched.',
   };
 };
 

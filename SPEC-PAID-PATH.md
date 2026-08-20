@@ -16,7 +16,7 @@ This is the shortest path that takes real money, lets a customer’s agent write
 | Public MCP | `estimate` / `search_publishers` / `get_publisher` / `register_account` / `add_credits` / `account_status` / `create_campaign` / `get_writing_brief` / `submit_placement`. **Paid inventory only** — no `claim_free_placement`, no $0 / self-serve listings |
 | `create_campaign` | `ACCOUNT_REQUIRED` or `INSUFFICIENT_CREDIT` (+ Checkout when Stripe secrets are set). Funded accounts get `ready_to_write` — then `get_writing_brief` + `submit_placement` |
 | Stripe | Worker implements wallet + Checkout + webhook. Live keys + D1 migration + Dashboard webhook still required. Tag `metadata.product=placement.sh` |
-| `site_content` | table exists; ~11 demo rows; `cite-mcp/src/enrich.ts` fetches homepage + RSS and stores a **brand-scrubbed** summary. Most inventory is still just a niche tag (“Tech”) |
+| `site_content` | table exists; crawl-first pipeline is `cite-worker/scripts/enrich-content.mts` (homepage + RSS, brand-scrubbed). Optional Grok pass with `XAI_API_KEY` (`--llm`). Ahrefs keywords are a later pass — do not dump them on `search_publishers`. |
 | Buyer emails | `account.created` on new `register_account`; `credits.added` after Checkout |
 | Operator outreach | specced as Gmail drafts (§8); not built |
 | Agent-submitted posts | **Shipped 2026-08-19:** `get_writing_brief` + `submit_placement` + D1 `placement_orders` + ops email + Orders tab. Domain stays off buyer tools. Publisher outreach still manual. |
@@ -153,7 +153,7 @@ for each active site:
   5. Sleep / jitter; honour robots.txt Disallow; skip on 403/timeout; mark enrich_status
 ```
 
-Run from a machine with open egress (local script or a Cloudflare Worker + Browser Rendering for JS-heavy homes). The existing `cite-mcp/src/enrich.ts` is step 1–2; **replace the bag-of-words `topicsFrom()` with the Grok profile.** Do not use Grok to *fetch* pages — we fetch, it only writes.
+Run from a machine with open egress. **`cite-worker/scripts/enrich-content.mts`** is the pipeline: we fetch, optionally Grok writes the profile, JSONL (and D1) store it. `cite-mcp/src/enrich.ts` is the old local-SQLite crawler. Do not use Grok to *fetch* pages — we fetch, it only writes. Crawl-only rows use `source=crawl-v1`; Grok rows use `source=crawl+grok-v1`.
 
 **Prompt (fixed, versioned `enrich_prompt_v1`):** given extracted text (which still contains the brand — this call is internal), return JSON:
 
@@ -242,7 +242,7 @@ Reads the draft, actually edits, sends. Marks `outreach_sent` / `site_accepted` 
 ## 5. Build order (do not parallelize the money path)
 
 1. **Wallet + Stripe Checkout + webhook + `add_credits` / richer `account_status`.** **Shipped 2026-08-19** on the Worker. Charges the exact listed_price / budget (no packs). Buyer email `credits.added` + `account.created`.
-2. **Enrichment pipeline** on the top ~500 score sites (enough for briefs to be real), then the rest. `get_writing_brief` ships on existing `site_content`; richer summaries still to backfill.
+2. **Enrichment pipeline** — crawl-first script shipped (`cite-worker/scripts/enrich-content.mts`). Highest `cite_score` first. Grok fill when `XAI_API_KEY` is set. Ahrefs keyword pack waits on the API.
 3. **`submit_placement` + auto-screen + D1 `placement_orders` + hold + ops email + Orders tab.** **Shipped 2026-08-19.** MCP errors the agent can act on. Does not email publishers or reveal domains to buyers.
 4. **Gmail drafts** into the Shortlist inbox + console order list.
 5. **`create_campaign` allocator** that returns writing_brief refs (can stay greedy/v0).

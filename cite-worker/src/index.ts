@@ -157,6 +157,9 @@ const pub = (r: Row, detail = false) => {
     turnaround_sla_days: r.turnaround_sla_days ?? 'unknown',
     how_this_works: 'Paid placement fulfilled by placement.sh. Prepaid credits required to book.',
     content_summary: r.summary ?? undefined,
+    audience: r.audience ?? undefined,
+    tone: r.tone ?? undefined,
+    post_shape: r.post_shape ?? undefined,
     recent_post_titles: r.recent_titles ? JSON.parse(r.recent_titles as string) : undefined,
     metrics_attribution: 'Ahrefs Site Explorer overview: Domain Rating, organic traffic, organic keywords, referring domains, backlinks, Ahrefs Rank, organic value — official names, when we have them. Moz DA and Majestic TF/CF are not shown.',
     note: 'Publisher domain is revealed as published_url when the placement is delivered (blind placements).',
@@ -404,7 +407,7 @@ async function runTool(env: Env, name: string, args: Row, account: Account | nul
       const publisher_id = publisherIdOf(args);
       if (!publisher_id) return { error: 'INVALID_ARGUMENT', message: 'publisher_id is required' };
       const row = (await env.DB.prepare(`
-        SELECT s.*, c.summary, c.writes_about, c.recent_titles
+        SELECT s.*, c.summary, c.writes_about, c.recent_titles, c.audience, c.tone, c.post_shape
         FROM sites s LEFT JOIN site_content c ON c.site_id = s.id WHERE s.id = ?
       `).bind(publisher_id).first()) as Row | null;
       if (!row || !isBuyerPublisher(row)) return { error: 'PUBLISHER_NOT_FOUND', publisher_id };

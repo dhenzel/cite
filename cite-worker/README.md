@@ -73,4 +73,21 @@ Charge the exact listed_price (for example $195). No credit packs in v1. Test mo
 
 ## Tests
 
-`npm test` — Worker handler against in-memory SQLite: public leak checks, publisher-named tools, discovery URLs, admin auth.
+`npm test` — extractors plus the Worker handler against in-memory SQLite: public leak checks, publisher-named tools, discovery URLs, admin auth.
+
+## Publisher enrichment (crawl, then optional Grok)
+
+Do not crawl from the public Worker. From a machine with open egress:
+
+```bash
+# paid-sites.json is {id,domain,cite_score,niche}[], highest score first. Gitignored.
+npx tsx scripts/enrich-content.mts --sites data/paid-sites.json --out data/enrich.jsonl
+# later, when you have an xAI key:
+XAI_API_KEY=... npx tsx scripts/enrich-content.mts --sites data/paid-sites.json --out data/enrich.jsonl --llm --force
+npx tsx scripts/enrich-to-sql.mts --in data/enrich.jsonl --out data/enrich.sql
+npx wrangler d1 execute cite-v0 --remote --file=migrations/009_enrich_profile.sql
+npx wrangler d1 execute cite-v0 --remote --file=data/enrich.sql
+npx wrangler deploy --keep-vars
+```
+
+`get_writing_brief` already reads `summary` / `writes_about` / `recent_titles`. Deploy after 009 so audience / tone / do / dont show up. Ahrefs keywords are a separate pass.

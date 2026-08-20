@@ -13,8 +13,13 @@ sq.exec(`
   INSERT INTO sites (id, domain, contact_email, niche, seller_price, markup, listed_price, cite_score, traffic_band, status, link_attribute)
   VALUES ('cs_aaa111bbb222', 'secret-example.com', 'owner@secret-example.com', 'Business', 100, 1.6, 160, 88, '10k–50k/mo', 'active', 'unknown'),
          ('cs_ccc333ddd444', 'hidden-blog.net', 'ed@hidden-blog.net', 'Tech', 50, 1.6, 80, 62, '1k–5k/mo', 'active', 'unknown');
-  INSERT INTO site_content (site_id, summary, writes_about) VALUES
-    ('cs_aaa111bbb222', 'B2B finance guides.', '["finance","b2b"]');
+  INSERT INTO site_content (site_id, summary, writes_about, recent_titles, audience, tone, post_shape, typical_length_words, do_fit, dont_fit, enrich_status, source)
+  VALUES
+    ('cs_aaa111bbb222', 'B2B finance guides for operators.', '["finance","b2b"]',
+     '["How operators run monthly close","Invoice terms that get paid"]',
+     'Operators who need practical finance ops writing.', 'practitioner', 'how-to', 900,
+     'Include a concrete close or invoicing example.', 'Do not pitch crypto trading.',
+     'ok', 'crawl-v1');
   INSERT INTO checkout_sessions (session_id, api_key, email, amount_cents, checkout_url, expires_at, created_at)
   VALUES ('cs_open_unpaid', 'ak_ghost', 'buyer@example.com', 19500,
           'https://checkout.stripe.com/c/pay/cs_test_open', datetime('now', '+1 day'), datetime('now', '-2 hours'));
@@ -944,6 +949,10 @@ console.log('\nall admin-key checks passed');
   assert(brief.publisher_id === 'cs_aaa111bbb222' && Array.isArray(brief.ask_the_human), 'brief asks homepage vs article');
   assert(brief.ask_the_human.some((x: string) => /homepage/i.test(x)), 'brief asks homepage vs a specific article');
   assert(!JSON.stringify(brief).includes('secret-example'), 'writing brief does not leak the publisher domain');
+  assert(brief.audience && /operators/i.test(brief.audience), 'writing brief includes crawl audience');
+  assert(brief.tone === 'practitioner' && brief.post_shape === 'how-to', 'writing brief includes tone and post shape');
+  assert(brief.do && brief.dont && brief.typical_length_words === 900, 'writing brief includes do/dont and typical length');
+  assert((brief.example_angles || []).some((x: string) => /monthly close/i.test(x)), 'example angles come from recent titles');
 
   brief = await call('get_writing_brief', { publisher_id: 'cs_aaa111bbb222', target_url: 'https://contextengine.com/docs/overview' });
   assert(brief.link?.kind === 'article' && brief.link?.to === 'https://contextengine.com/docs/overview', 'article target is recorded on the brief');

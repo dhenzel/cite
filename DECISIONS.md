@@ -229,6 +229,17 @@ David: the placement.sh homepage should use the Shortlist-colored dot between �
 
 **Decision:** wordmark is `placement.sh` with the period in Shortlist mint (`#30D2AD`). Who runs this leads with [the team](https://shortlist.io/about-us/), then a plain link to [Book a 15-min call](https://calendly.com/shortlist-businessdevelopment/15min) (the homepage widget URL, not an embedded popup), then shortlist.io. The same three links go out over MCP (`help.who_runs_this`, initialize instructions, booking `next_step`) so the agent can offer a call in the chat — optional, not required to pay. No auto-book, no Calendly embed. Inter + navy ink so the mint period reads as Shortlist, not a generic teal.
 
+## 2026-08-20 — crawl-first enrichment while Ahrefs is pending
+
+David: enrich publishers with what they write about and recent posts so an agent can draft; sign up for Ahrefs in parallel.
+
+**Decision:** do the crawl (+ optional Grok) now. Do not wait on Ahrefs. Fat profile belongs on `get_writing_brief` / `get_publisher` detail — not a keyword dump on `search_publishers`.
+
+- Script: `cite-worker/scripts/enrich-content.mts` (open egress, not the public Worker). Homepage + RSS, honour `Disallow: /`, brand-scrub public fields.
+- `--llm` calls xAI (`grok-4-fast` by default) with `enrich_prompt_v1` when `XAI_API_KEY` is set. Without a key, store crawl-only `summary` / `writes_about` / `recent_titles` (`source=crawl-v1`) so briefs improve immediately.
+- D1 migration `009_enrich_profile.sql` adds audience / tone / post_shape / typical_length_words / do_fit / dont_fit / summary_private / enrich_status. `summary_private` is operator-only.
+- Highest `cite_score` first. Resume skips `enrich_status=ok`. Ahrefs ranking keywords stay a second pass.
+
 ## Still open
 
 1. **Domain + trademark check for "Cite"** (§13.1) — **closed as a brand**: ship as placement.sh. Cite remains the repo/worker name.

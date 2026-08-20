@@ -11,6 +11,7 @@ import {
   scrub,
   topicsFrom,
 } from '../src/enrich-extract.js';
+import { selectSites } from './enrich-content.mts';
 
 const html = `
 <title>Finance Weekly — money for operators</title>
@@ -89,6 +90,30 @@ assert.equal(parseLlmProfile('not json', domain), null, 'rejects garbage');
     summary_public: 'A finance publication for operators covering payroll and close.',
   }), 'other.com');
   assert(ok && ok.topics.includes('payroll'), 'apply-llm uses the same Grok JSON shape');
+}
+
+// selectSites: resume + windowing. Both of these were real footguns on an 8k run.
+{
+  const all = [
+    { id: 'a', domain: 'a.test', cite_score: 90 },
+    { id: 'b', domain: 'b.test', cite_score: 80 },
+    { id: 'c', domain: 'c.test', cite_score: 70 },
+    { id: 'd', domain: 'd.test', cite_score: 60 },
+  ];
+
+  assert.deepEqual(selectSites(all, new Set()).map((s) => s.id), ['a', 'b', 'c', 'd'],
+    'highest cite_score first');
+
+  // The regression: with 'a' and 'b' already crawled, --limit 2 must still hand
+  // back two fresh sites, not two minus the ones already done.
+  assert.deepEqual(selectSites(all, new Set(['a', 'b']), 0, 2).map((s) => s.id), ['c', 'd'],
+    'a resumed run with --limit yields a full window of fresh sites');
+
+  assert.deepEqual(selectSites(all, new Set(), 1, 2).map((s) => s.id), ['b', 'c'],
+    '--offset skips within the fresh set');
+  assert.deepEqual(selectSites(all, new Set(['a', 'b', 'c', 'd'])), [],
+    'everything done means nothing to crawl');
+  assert.equal(all[0].id, 'a', 'selectSites does not reorder the caller\'s array');
 }
 
 console.log('ok: enrich extractors');

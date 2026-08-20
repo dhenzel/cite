@@ -270,11 +270,13 @@ The gap that remains — and that Cite must own: CrowdReply's writes sit **behin
 
 ## 13. Open decisions — for David
 
-1. **Domain and trademark for "Cite" — unchecked.** Blocks any public naming. *(Still open — do this now, it is cheap.)*
+> Every item here is now closed. The live open list is **`DECISIONS.md` → "Still open"**; this section is kept for the history of how each one was settled.
+
+1. ~~Domain and trademark for "Cite"~~ — **CLOSED 2026-08-18: shipping as placement.sh.** cite.sh is a competing ChatGPT-citation directory; Cite survives only as the repo and Worker name, which is never shown to a buyer.
 2. ~~Dofollow vs. `rel=sponsored`~~ — **SETTLED 2026-08-13: dofollow, risk accepted** (§12b).
 3. ~~Masked vs. open domains on the free tier~~ — **SETTLED 2026-08-15: blind placements — domains hidden at every tier until the link is delivered** (§11).
 4. ~~Who staffs the outreach inbox~~ — **SETTLED 2026-08-13: existing Shortlist team** (§8).
-5. **Finished posts vs. pitches** — currently finished posts; David flagged this as revisitable. *(Still open.)*
+5. ~~Finished posts vs. pitches~~ — **CLOSED 2026-08-18: finished posts**, implemented as `submit_placement` (SPEC-PAID-PATH §4).
 6. ~~Branding — separate brand vs. Shortlist sub-product~~ — **SETTLED 2026-08-13: separate brand.** Human site + buyer MCP name Shortlist for trust (2026-08-19, §14).
 
 ---

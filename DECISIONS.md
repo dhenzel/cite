@@ -263,6 +263,49 @@ Live today: **8,968 paid** (8,820 `paid_placement` + 148 `unavailable`) and **49
 
 Next on the free side (not built): researching more free publishers and filling in `agent_instructions` for the 470-odd rows that have none.
 
+## 2026-08-20 — the stack is merged; `main` is the source of truth
+
+The whole placement.sh product had been sitting on 15 open pull requests — a 14-deep
+stacked chain plus a dev-environment branch — while `main` was still the initial
+commit and production ran unmerged branch code against the live D1. Every new change
+had to be piled onto the chain or it forked.
+
+**Decision:** merge all of it into `main` with real merge commits, in dependency order
+(#2, #4→#16, then #3), retargeting each PR's base to `main` as its parent landed. Merge,
+not squash — a squash orphans the rest of a stack. `main` is now the branch to cut from.
+Nothing was deployed as part of this: the Worker already runs this code, so the merge
+changed no behaviour.
+
+PR #1 (partner briefing HTML) is deliberately left open. It is written against the
+reversed decisions — free placements as the trial, quiet Shortlist ownership, "Cite" as
+the public name — so merging it would put a document into `main` that contradicts the
+product. It needs a rewrite or a close, David's call.
+
+**Also settled:** `SPEC.md` §13 no longer keeps its own open list. It disagreed with this
+file on two items that were closed on 2026-08-18. `DECISIONS.md` → "Still open" is the
+single live list; §13 is history.
+
+## 2026-08-20 — the crawl cannot run from a Claude Code cloud session
+
+Ten top-scoring publishers, ten `fetch_failed`. Not the publishers: the environment's
+network policy answers `403` to CONNECT for any host outside its allowlist, so every
+outbound crawl request dies in the proxy.
+
+**Decision:** the enrichment crawl runs from a Cursor cloud agent or a laptop, never from
+a Claude Code cloud session. Prove egress with a 10-site `--limit` before committing to a
+long pass — an all-`fetch_failed` spread means the wrong machine, not bad inventory.
+Written into `cite-worker/README.md` so nobody re-discovers it at 8,000 sites.
+
+**Also:** `scripts/make-paid-sites.mts` now builds the input list from D1
+(`--pending enrich` / `--pending ahrefs`). It was hand-made before, so "the ones still
+missing a profile" was not reproducible. Pending enrichment today: **8,845 of 8,968 paid
+sites** — 123 have a usable profile.
+
+Two footguns in `enrich-content.mts` fixed before scaling: `--force` appended to the
+ledger instead of truncating it (duplicate row per site on every forced re-run), and
+`--limit`/`--offset` windowed before the resume filter, so a resumed run silently crawled
+fewer sites than asked. Both now match `refresh-ahrefs.mts`, both covered by tests.
+
 ## 2026-08-20 — free placement opportunities: the second product line
 
 David: "aside from selling links, also help people get their site placed and gain visibility… I want the agent and the MCP server to do most of the work" — autonomously or alongside the customer. Source material: a research workbook of 1,051 opportunities plus two handoff documents.
@@ -298,7 +341,7 @@ David: "aside from selling links, also help people get their site placed and gai
 
 1. **Domain + trademark check for "Cite"** (§13.1) — **closed as a brand**: ship as placement.sh. Cite remains the repo/worker name.
 2. **Finished posts vs. pitches** (§13.5) — **closed 2026-08-18**: finished posts, implemented via `submit_placement`.
-3. **Ahrefs API access** — Moz / Majestic are out going forward. Still verify what Shortlist's Ahrefs licence actually includes (API vs. UI-only).
+3. **Ahrefs API access** — Moz / Majestic are out going forward. Still verify what Shortlist's Ahrefs licence actually includes (API vs. UI-only). **Unit budget disputed:** PR #16 recorded the workspace at ~99.5k/100k with the remaining sites blocked until the 20 Sep reset; David reports ~300k left. 6,054 sites still have no overview and ~29 units each buys one, so the real balance decides whether this waits a month. Check before planning around either number.
 4. **Link-attribute backfill** — dofollow/sponsored unknown across 9,453 sites; mandatory field before launch (§12b).
 5. **Build team** — who drives the v1 build (agent-driven by David, Shortlist devs, or a hire).
 6. **Shortlist's own repositioning** — independent open question; not resolved by shipping Cite.

@@ -256,6 +256,20 @@ function loadSites(path: string): Site[] {
   })).filter((s) => s.id && s.domain);
 }
 
+/**
+ * Highest cite_score first, already-done sites dropped, then the --offset/--limit
+ * window. Filtering before slicing is the order refresh-ahrefs.mts uses; slicing
+ * first makes a resumed run with --limit silently process fewer sites than asked
+ * for, because the already-done rows eat into the window.
+ */
+export function selectSites(all: Site[], done: Set<string>, offset = 0, limit = Infinity): Site[] {
+  return all
+    .slice()
+    .sort((a, b) => (b.cite_score ?? 0) - (a.cite_score ?? 0))
+    .filter((s) => !done.has(s.id))
+    .slice(offset, Number.isFinite(limit) ? offset + limit : undefined);
+}
+
 const isMain = import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith('enrich-content.mts');
 if (isMain && !has('no-run')) {
   const sitesPath = resolve(flag('sites') ?? 'data/paid-sites.json');
@@ -266,15 +280,14 @@ if (isMain && !has('no-run')) {
   }
   mkdirSync(dirname(outPath), { recursive: true });
   const done = await loadDone(outPath);
-  const sites = loadSites(sitesPath)
-    .sort((a, b) => (b.cite_score ?? 0) - (a.cite_score ?? 0))
-    .slice(OFFSET, Number.isFinite(LIMIT) ? OFFSET + LIMIT : undefined)
-    .filter((s) => !done.has(s.id));
+  const sites = selectSites(loadSites(sitesPath), done, OFFSET, LIMIT);
   if (USE_LLM && !XAI_KEY) {
     console.warn('`--llm` set but XAI_API_KEY is empty — crawl-only');
   }
   console.log(`enrich ${sites.length} sites (skip ${done.size} already ok), concurrency ${CONCURRENCY}${USE_LLM && XAI_KEY ? ', grok' : ', crawl-only'}`);
-  const out = createWriteStream(outPath, { flags: 'a' });
+  // --force empties the done set, so appending would duplicate every site in the
+  // ledger. Truncate instead, matching refresh-ahrefs.mts.
+  const out = createWriteStream(outPath, { flags: FORCE ? 'w' : 'a' });
   let ok = 0, failed = 0, blocked = 0;
   await pool(sites, CONCURRENCY, enrichSite, (row) => {
     out.write(`${JSON.stringify(row)}\n`);

@@ -34,10 +34,18 @@ pg.on('pageerror', e => errs.push(e.message));
 pg.on('console', m => {
   if (m.type() !== 'error') return;
   const t = m.text();
-  // The Inter webfont is fetched from fonts.googleapis.com and cannot load in a
-  // sandbox with no egress. That is the environment, not a broken console.
-  if (/Failed to load resource/.test(t)) return;
+  // A subresource that failed to load is a network fact, not a page defect —
+  // this guard exists to catch JS that does not parse or does not run.
+  if (/Failed to load resource/i.test(t)) return;
   errs.push('console: ' + t);
+});
+// Keep the run hermetic: the console links a Google Fonts stylesheet, which a
+// sandboxed browser cannot reach. Abort every off-origin request so a blocked
+// subresource is never mistaken for a broken page.
+await pg.route('**/*', r => {
+  const u = new URL(r.request().url());
+  if (u.host !== 'cite.local') return r.abort();
+  return r.fallback();
 });
 await pg.route('http://cite.local/admin', r => r.fulfill({ contentType: 'text/html', body: html }));
 await pg.route('**/admin/api/**', r => {

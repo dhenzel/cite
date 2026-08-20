@@ -137,18 +137,36 @@ Nothing on either surface may promise approval, indexing, traffic, or a dofollow
 
 ## Publisher enrichment (crawl, then optional Grok)
 
-Do not crawl from the public Worker. From a machine with open egress:
+Do not crawl from the public Worker. **The crawl needs open egress and will not
+run everywhere.** A Claude Code cloud session proxies outbound HTTPS through an
+allowlist that denies publisher hosts — every fetch comes back `403` from the
+CONNECT tunnel and the whole pass reports `fetch_failed`. Run it from a Cursor
+cloud agent or a laptop. Prove egress with a 10-site `--limit` before starting a
+long run; if the status spread is all `fetch_failed`, you are on the wrong machine,
+not looking at broken publishers.
 
 ```bash
-# paid-sites.json is {id,domain,cite_score,niche}[], highest score first. Gitignored.
+# 1. Build the input from D1: every paid site without an 'ok' profile yet,
+#    highest cite_score first. Writes data/paid-sites.json (gitignored — domains).
+npx tsx scripts/make-paid-sites.mts --pending enrich
+
+# 2. Crawl. Resume is automatic — rerunning skips anything already in the JSONL.
 npx tsx scripts/enrich-content.mts --sites data/paid-sites.json --out data/enrich.jsonl
+
 # later, when you have an xAI *API* key (console.x.ai — not SuperGrok, not Cursor):
 XAI_API_KEY=... npx tsx scripts/enrich-content.mts --sites data/paid-sites.json --out data/enrich.jsonl --llm --force
+
+# 3. Load into D1 and redeploy.
 npx tsx scripts/enrich-to-sql.mts --in data/enrich.jsonl --out data/enrich.sql
 npx wrangler d1 execute cite-v0 --remote --file=migrations/009_enrich_profile.sql
 npx wrangler d1 execute cite-v0 --remote --file=data/enrich.sql
 npx wrangler deploy --keep-vars
 ```
+
+`--force` restarts from scratch: it clears the resume set *and* truncates the
+JSONL, so the ledger never ends up with two rows per site. Without it, `--limit`
+and `--offset` window the sites that are still outstanding, so a resumed run with
+`--limit 500` crawls 500 new sites rather than 500 minus whatever is already done.
 
 **Cursor × Grok is not an API key.** Picking Grok in Cursor (this cloud agent included) bills the Cursor plan. It does not set `XAI_API_KEY` and cannot call `https://api.x.ai`. SuperGrok / grok.com is also not API access.
 
@@ -170,6 +188,7 @@ Lite is 100k units/month. One overview row (`domain_rating`, `org_traffic`, `org
 
 ```bash
 cd cite-worker
+npx tsx scripts/make-paid-sites.mts --pending ahrefs   # only sites with no overview yet
 AHREFS_API_KEY=… npx tsx scripts/refresh-ahrefs.mts \
   --sites data/paid-sites.json --out data/ahrefs.jsonl --sql data/ahrefs.sql
 npx wrangler d1 execute cite-v0 --remote --file=data/ahrefs.sql

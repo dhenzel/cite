@@ -4,7 +4,7 @@
 
 ### Repository layout / where the code lives
 
-This repo (`cite`) hosts **Cite** — an agent-native link-placement marketplace (see `SPEC.md` and `DECISIONS.md`). The `main` branch currently only contains `README.md`; the actual application code lives on feature branches. There are two independent Node/TypeScript projects:
+This repo (`cite`) hosts **Cite** — an agent-native link-placement marketplace (see `SPEC.md` and `DECISIONS.md`). All of the application code is on `main`. There are two independent Node/TypeScript projects:
 
 - `cite-worker/` — the primary product: a Cloudflare Worker (`wrangler`) serving the public MCP endpoint (`POST /mcp`), the operator console (`/admin`), and the operator/admin MCP (`/admin/mcp`), backed by a D1 database (`cite-v0`). See `cite-worker/README.md`.
 - `cite-mcp/` — a local **stdio** MCP server (the free read tier) over a local SQLite DB built by an import pipeline. See `cite-mcp/README.md`.

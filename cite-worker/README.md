@@ -7,7 +7,7 @@ Cloudflare Worker serving:
 - **`GET /paid`** — post-Checkout landing (“credits added — go back to your agent and say paid”).
 - **`POST /webhooks/stripe`** — credits the wallet on `checkout.session.completed` when `metadata.product=placement.sh`.
 - **`GET /llms.txt`**, **`GET /.well-known/mcp/server.json`** — agent discovery.
-- **`/admin`** — operator console (Shortlist navy/mint): inventory plus an **Orders** tab. Submitted posts stay here; ops get mail, copy the post, and send it to the publisher themselves. Domain is visible to operators only. Guarded by Shortlist SSO / `ADMIN_TOKEN`.
+- **`/admin`** — operator console (Shortlist navy/mint): **Paid inventory** and **Free inventory** as two separate tabs, plus an **Orders** tab. Submitted posts stay here; ops get mail, copy the post, and send it to the publisher themselves. Domain is visible to operators only. Guarded by Shortlist SSO / `ADMIN_TOKEN`.
 
 Public language is **publisher / placement**, never site. D1 table names stay `sites` so the live catalog does not need a migration.
 
@@ -73,7 +73,29 @@ Charge the exact listed_price (for example $195). No credit packs in v1. Test mo
 
 ## Tests
 
-`npm test` — extractors plus the Worker handler against in-memory SQLite: public leak checks, publisher-named tools, discovery URLs, admin auth.
+`npm test` — extractors plus the Worker handler against in-memory SQLite: public leak checks, publisher-named tools, discovery URLs, admin auth, and the paid/free section split.
+
+`npm run test:console` — renders the real console in headless Chromium against a stubbed API. Catches an inline-script syntax error, which would silently blank the whole page.
+
+## Paid and free inventory are two sections
+
+`sites.cost_type` splits the catalog and the console follows it:
+
+| | Paid inventory | Free inventory |
+|---|---|---|
+| `cost_type` | `paid` (also the default for rows imported before migration 002) | `free` |
+| What it is | publishers Shortlist pays for | apply / self-publish / link-swap targets |
+| Columns | seller $, markup, listed $, margin | how to get in, link back?, submission instructions |
+| Buyer MCP | sold, when priced and `acquisition_mode=paid_placement` | never listed, never priced |
+
+The tab *is* the filter — `/admin/api/sites` is always called with `cost_type`, so a
+free publisher can never appear in the paid table. The **Section** column on each row
+patches `cost_type`, which is how a site moves between the two.
+
+Add a free site from the free tab (or `POST /admin/api/sites` with
+`{"cost_type":"free","acquisition_mode":"apply_editorial","agent_instructions":"…"}`).
+Free rows are stored without a seller price, so nothing can compute a listed price for
+them and `buyerWhere` keeps them off the public MCP.
 
 ## Publisher enrichment (crawl, then optional Grok)
 

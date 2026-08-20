@@ -126,6 +126,15 @@ const isBuyerPublisher = (r: Row): boolean =>
   && typeof r.listed_price === 'number' && r.listed_price > 0
   && (r.acquisition_mode ?? 'paid_placement') === 'paid_placement';
 
+/**
+ * Paid and free are two separate sections of the operator console, split on
+ * cost_type. Rows imported before 002 have no cost_type, so both sides read
+ * through COALESCE and 'paid' stays the default.
+ */
+const PAID = "COALESCE(cost_type,'paid')='paid'";
+const FREE = "COALESCE(cost_type,'paid')='free'";
+const COST_TYPES = ['paid', 'free'];
+
 const parseTopicList = (raw: unknown): string[] => {
   if (!raw) return [];
   if (Array.isArray(raw)) return raw.map((x) => String(x));
@@ -1206,13 +1215,18 @@ async function handleAdminApi(req: Request, env: Env, path: string): Promise<Res
   }
 
   if (path === '/admin/api/stats' && req.method === 'GET') {
+    // Paid and free are two different sections of the console, so the money
+    // numbers (priced / markup / margin / link-attr gap) only count paid rows.
     const totals = await env.DB.prepare(`
       SELECT COUNT(*) AS sites,
              SUM(CASE WHEN status='active' THEN 1 ELSE 0 END) AS active,
-             SUM(CASE WHEN listed_price IS NOT NULL THEN 1 ELSE 0 END) AS priced,
-             ROUND(AVG(markup),2) AS avg_markup,
-             ROUND(AVG(CASE WHEN seller_price>0 THEN listed_price-seller_price END),2) AS avg_margin,
-             SUM(CASE WHEN link_attribute='unknown' THEN 1 ELSE 0 END) AS attr_unknown
+             SUM(CASE WHEN ${PAID} THEN 1 ELSE 0 END) AS paid_sites,
+             SUM(CASE WHEN ${FREE} THEN 1 ELSE 0 END) AS free_sites,
+             SUM(CASE WHEN ${PAID} AND listed_price IS NOT NULL AND listed_price > 0 THEN 1 ELSE 0 END) AS priced,
+             SUM(CASE WHEN ${PAID} AND (listed_price IS NULL OR listed_price = 0) THEN 1 ELSE 0 END) AS paid_unpriced,
+             ROUND(AVG(CASE WHEN ${PAID} THEN markup END),2) AS avg_markup,
+             ROUND(AVG(CASE WHEN ${PAID} AND seller_price>0 THEN listed_price-seller_price END),2) AS avg_margin,
+             SUM(CASE WHEN ${PAID} AND link_attribute='unknown' THEN 1 ELSE 0 END) AS attr_unknown
       FROM sites
     `).first();
     return json(totals);
@@ -1301,7 +1315,7 @@ async function handleAdminApi(req: Request, env: Env, path: string): Promise<Res
       if (field === 'status' && !STATUSES.includes(v as string)) return json({ error: 'BAD_STATUS', allowed: STATUSES }, 400);
       if (field === 'link_attribute' && !LINK_ATTRS.includes(v as string)) return json({ error: 'BAD_LINK_ATTRIBUTE', allowed: LINK_ATTRS }, 400);
       if (field === 'acquisition_mode' && !ACQUISITION_MODES.includes(v as string)) return json({ error: 'BAD_ACQUISITION_MODE', allowed: ACQUISITION_MODES }, 400);
-      if (field === 'cost_type' && !['paid', 'free'].includes(v as string)) return json({ error: 'BAD_COST_TYPE', allowed: ['paid', 'free'] }, 400);
+      if (field === 'cost_type' && !COST_TYPES.includes(v as string)) return json({ error: 'BAD_COST_TYPE', allowed: COST_TYPES }, 400);
       if ((field === 'seller_price' || field === 'markup') && v !== null && (typeof v !== 'number' || v < 0)) {
         return json({ error: 'BAD_NUMBER', field }, 400);
       }
@@ -1325,19 +1339,34 @@ async function handleAdminApi(req: Request, env: Env, path: string): Promise<Res
     const b = (await req.json()) as Row;
     if (!b.domain || typeof b.domain !== 'string' || !b.domain.includes('.')) return json({ error: 'DOMAIN_REQUIRED' }, 400);
     const domain = b.domain.toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+    if (b.cost_type != null && !COST_TYPES.includes(b.cost_type as string)) {
+      return json({ error: 'BAD_COST_TYPE', allowed: COST_TYPES }, 400);
+    }
+    if (b.acquisition_mode != null && !ACQUISITION_MODES.includes(b.acquisition_mode as string)) {
+      return json({ error: 'BAD_ACQUISITION_MODE', allowed: ACQUISITION_MODES }, 400);
+    }
     const id = `cs_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
-    const seller = typeof b.seller_price === 'number' ? b.seller_price : null;
+    // A site lands in the free section when it is added there. Free rows carry
+    // no seller price, so nothing can compute a listed price for them and they
+    // stay invisible to the buyer MCP (buyerWhere).
+    const costType = b.cost_type === 'free' ? 'free' : 'paid';
+    const isFree = costType === 'free';
+    const seller = !isFree && typeof b.seller_price === 'number' ? b.seller_price : null;
     const markup = typeof b.markup === 'number' ? b.markup : 1.6;
+    const mode = (b.acquisition_mode as string) ?? (isFree ? 'apply_editorial' : 'paid_placement');
     await env.DB.prepare(`
       INSERT INTO sites (id, domain, niche, subniche, contact_name, contact_email, note,
-                         seller_price, markup, listed_price, link_attribute, status, updated_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,'active',datetime('now'))
+                         seller_price, markup, listed_price, link_attribute,
+                         cost_type, acquisition_mode, requires_reciprocal_link, agent_instructions,
+                         status, updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'active',datetime('now'))
     `).bind(
       id, domain, b.niche ?? null, b.subniche ?? null, b.contact_name ?? null, b.contact_email ?? null,
       b.note ?? null, seller, markup, seller && seller > 0 ? listedPrice(seller, markup) : null,
       LINK_ATTRS.includes(b.link_attribute as string) ? b.link_attribute : 'unknown',
+      costType, mode, b.requires_reciprocal_link ? 1 : 0, b.agent_instructions ?? null,
     ).run();
-    return json({ ok: true, id, domain }, 201);
+    return json({ ok: true, id, domain, cost_type: costType, acquisition_mode: mode }, 201);
   }
 
   return json({ error: 'NOT_FOUND', path }, 404);
@@ -1508,7 +1537,7 @@ const adminTools = [
         q: { type: 'string', description: 'Matches domain, niche, subniche or note' },
         niche: { type: 'string' },
         status: { type: 'string', enum: STATUSES },
-        cost_type: { type: 'string', enum: ['paid', 'free'] },
+        cost_type: { type: 'string', enum: COST_TYPES },
         acquisition_mode: { type: 'string', enum: ACQUISITION_MODES },
         link_attribute: { type: 'string', enum: LINK_ATTRS },
         min_score: { type: 'number' }, max_score: { type: 'number' },
@@ -1609,7 +1638,7 @@ function validateSet(set: Row): string | null {
     if (k === 'status' && !STATUSES.includes(v as string)) return `Bad status. Allowed: ${STATUSES.join(', ')}`;
     if (k === 'link_attribute' && !LINK_ATTRS.includes(v as string)) return `Bad link_attribute. Allowed: ${LINK_ATTRS.join(', ')}`;
     if (k === 'acquisition_mode' && !ACQUISITION_MODES.includes(v as string)) return `Bad acquisition_mode. Allowed: ${ACQUISITION_MODES.join(', ')}`;
-    if (k === 'cost_type' && !['paid', 'free'].includes(v as string)) return 'Bad cost_type. Allowed: paid, free';
+    if (k === 'cost_type' && !COST_TYPES.includes(v as string)) return `Bad cost_type. Allowed: ${COST_TYPES.join(', ')}`;
     if ((k === 'seller_price' || k === 'markup') && v !== null && (typeof v !== 'number' || v < 0)) return `${k} must be a non-negative number`;
   }
   return null;

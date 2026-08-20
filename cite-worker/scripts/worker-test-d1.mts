@@ -137,7 +137,56 @@ assert((await r.json()).sites[0].listed_price === 100, 'add site computes listed
 
 // stats + UI + discovery
 r = await f('/admin/api/stats', { headers: auth });
-assert((await r.json()).sites === 3, 'stats totals');
+{
+  const st = await r.json();
+  assert(st.sites === 3, 'stats totals');
+  assert(st.paid_sites === 3 && st.free_sites === 0, 'stats splits the two sections');
+  assert(st.paid_sites + st.free_sites === st.sites, 'every site belongs to exactly one section');
+}
+
+// ---- paid and free are two sections of the console ----
+r = await f('/admin/api/sites', { method: 'POST', headers: auth, body: JSON.stringify({
+  domain: 'free-apply.test', niche: 'Tech', cost_type: 'free',
+  agent_instructions: 'Pitch the editor, no fee.', requires_reciprocal_link: 1,
+}) });
+d = await r.json();
+const freeId = d.id;
+assert(r.status === 201 && d.cost_type === 'free', 'operators can add a site straight into the free section');
+assert(d.acquisition_mode === 'apply_editorial', 'a free site defaults to apply_editorial, not paid_placement');
+r = await f('/admin/api/sites?cost_type=free', { headers: auth });
+d = await r.json();
+{
+  const ids = d.sites.map((x: { id: string }) => x.id);
+  assert(d.total === 1 && ids.includes(freeId), 'the free section lists only free sites');
+  const site = d.sites.find((x: { id: string }) => x.id === freeId);
+  assert(site.listed_price == null && site.seller_price == null, 'a free site carries no price');
+  assert(site.requires_reciprocal_link === 1 && site.agent_instructions === 'Pitch the editor, no fee.',
+    'the free section keeps the link-back flag and the how-to-publish note');
+}
+r = await f('/admin/api/sites?cost_type=paid', { headers: auth });
+d = await r.json();
+assert(!d.sites.some((x: { id: string }) => x.id === freeId), 'a free site never shows up in the paid section');
+assert(d.total === 3, 'the paid section still holds every paid site');
+r = await f('/admin/api/sites', { method: 'POST', headers: auth, body: JSON.stringify({ domain: 'bad-cost.test', cost_type: 'sponsored' }) });
+assert(r.status === 400, 'a site has to land in one of the two sections');
+
+// the Section control moves a publisher between the two tables
+r = await f(`/admin/api/sites/${freeId}`, { method: 'PATCH', headers: auth, body: JSON.stringify({ cost_type: 'paid' }) });
+assert((await r.json()).site.cost_type === 'paid', 'a free site can be moved into paid inventory');
+r = await f('/admin/api/sites?cost_type=free', { headers: auth });
+assert((await r.json()).total === 0, 'the moved site leaves the free section');
+r = await f(`/admin/api/sites/${freeId}`, { method: 'PATCH', headers: auth, body: JSON.stringify({ cost_type: 'free' }) });
+assert((await r.json()).site.cost_type === 'free', 'and it can be moved back');
+r = await f('/admin/api/stats', { headers: auth });
+{
+  const st = await r.json();
+  assert(st.paid_sites === 3 && st.free_sites === 1, 'stats follows sites between sections');
+}
+assert(ADMIN_HTML.includes('id="pane-free"') && ADMIN_HTML.includes('id="rows_free"'),
+  'the console has a free inventory section of its own');
+assert(ADMIN_HTML.includes('addFreeSite') && ADMIN_HTML.includes('freeRowHtml'),
+  'the free section adds and renders free sites without price columns');
+assert(!/id="fcost"/.test(ADMIN_HTML), 'the paid/free dropdown is gone — the tab is the filter');
 r = await f('/admin');
 {
   const adminHtml = await r.text();

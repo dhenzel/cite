@@ -123,6 +123,9 @@ export const ADMIN_HTML = `<!doctype html>
   td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
   td input { width:70px; padding:4px 6px; text-align:right; }
   td select { padding:4px 6px; }
+  td.instr input { width:200px; text-align:left; }
+  .addform .reciprocal { display:flex; align-items:center; gap:6px; color:var(--muted); font-size:13px; }
+  .addform .reciprocal input { width:auto; }
   .domain { font-weight:600; } .sub { color:var(--muted); font-size:12px; }
   .margin-pos { color:var(--good); } .margin-neg { color:var(--bad); }
   .pill { display:inline-block; padding:1px 8px; border-radius:99px; font-size:12px;
@@ -229,7 +232,8 @@ export const ADMIN_HTML = `<!doctype html>
 </div>
 <div id="app" class="wrap">
   <div class="tabs">
-    <button id="tab-inv" class="tab active" onclick="showTab('inv')">Inventory</button>
+    <button id="tab-inv" class="tab active" onclick="showTab('inv')">Paid inventory</button>
+    <button id="tab-free" class="tab" onclick="showTab('free')">Free inventory</button>
     <button id="tab-ord" class="tab" onclick="showTab('ord')">Orders</button>
     <button id="tab-fol" class="tab" onclick="showTab('fol')">Follow-up</button>
     <button id="tab-ana" class="tab" onclick="showTab('ana')">Analytics</button>
@@ -242,13 +246,12 @@ export const ADMIN_HTML = `<!doctype html>
     <input id="q" placeholder="search domain / niche / note…" style="flex:1;min-width:220px">
     <select id="fniche"><option value="">all niches</option></select>
     <select id="fstatus"><option value="">all statuses</option><option>active</option><option>paused</option><option>burned</option></select>
-    <select id="fcost"><option value="">paid + free</option><option value="free">free only</option><option value="paid">paid only</option></select>
     <select id="fmode"><option value="">all modes</option><option value="paid_placement">paid_placement</option><option value="self_serve">self_serve</option><option value="apply_editorial">apply_editorial</option><option value="link_exchange">link_exchange</option><option value="unavailable">unavailable</option></select>
-    <button class="primary" onclick="load(1)">Search</button>
+    <button class="primary" onclick="load('inv',1)">Search</button>
   </div>
-  <p class="hint">Click a domain to see the crawl profile. Click any column header to sort. Score starts highest first.</p>
+  <p class="hint">Publishers we pay for. Free sites live in their own tab. Click a domain to see the crawl profile, any column header to sort. Score starts highest first.</p>
   <details>
-    <summary>+ Add site</summary>
+    <summary>+ Add paid site</summary>
     <div class="addform">
       <input id="a_domain" placeholder="domain.com">
       <input id="a_niche" placeholder="niche">
@@ -274,14 +277,65 @@ export const ADMIN_HTML = `<!doctype html>
       <th class="sort" data-sort="link_attribute" title="Click to sort">Link attr</th>
       <th class="num sort" data-sort="max_links_per_post" title="Click to sort">Max links</th>
       <th class="sort" data-sort="status" title="Click to sort">Status</th>
+      <th title="Move this publisher to the other section">Section</th>
     </tr></thead>
     <tbody id="rows"></tbody>
   </table>
   </div>
   <div class="pager">
-    <button onclick="load(page-1)">‹ prev</button>
+    <button onclick="load('inv',VIEWS.inv.page-1)">‹ prev</button>
     <span id="pageinfo"></span>
-    <button onclick="load(page+1)">next ›</button>
+    <button onclick="load('inv',VIEWS.inv.page+1)">next ›</button>
+  </div>
+  </div>
+
+  <div id="pane-free" style="display:none">
+  <div class="bar">
+    <input id="q_free" placeholder="search domain / niche / note…" style="flex:1;min-width:220px">
+    <select id="fniche_free"><option value="">all niches</option></select>
+    <select id="fstatus_free"><option value="">all statuses</option><option>active</option><option>paused</option><option>burned</option></select>
+    <select id="fmode_free"><option value="">all modes</option><option value="paid_placement">paid_placement</option><option value="self_serve">self_serve</option><option value="apply_editorial">apply_editorial</option><option value="link_exchange">link_exchange</option><option value="unavailable">unavailable</option></select>
+    <button class="primary" onclick="load('free',1)">Search</button>
+  </div>
+  <p class="hint">Publishers that cost nothing to place on — apply, self-publish, or swap a link. Never sold on the buyer MCP and never priced: what matters here is <b>how you get in</b>, not what it costs.</p>
+  <details>
+    <summary>+ Add free site</summary>
+    <div class="addform">
+      <input id="fa_domain" placeholder="domain.com">
+      <input id="fa_niche" placeholder="niche">
+      <select id="fa_mode">
+        <option value="apply_editorial">apply_editorial</option>
+        <option value="self_serve">self_serve</option>
+        <option value="link_exchange">link_exchange</option>
+        <option value="unavailable">unavailable</option>
+      </select>
+      <input id="fa_instructions" placeholder="how to publish (submission URL, who to pitch…)" style="flex:1;min-width:240px">
+      <label class="reciprocal"><input id="fa_recip" type="checkbox"> wants a link back</label>
+      <button class="primary" onclick="addFreeSite()">Add</button>
+    </div>
+  </details>
+  <div style="overflow-x:auto">
+  <table>
+    <thead><tr>
+      <th class="sort" data-sort="domain" title="Click to sort">Domain</th>
+      <th class="sort" data-sort="niche" title="Click to sort">Niche</th>
+      <th class="num sort" data-sort="cite_score" title="Click to sort">Score</th>
+      <th class="num sort" data-sort="dr" title="Click to sort">DR</th>
+      <th class="num sort" data-sort="traffic" title="Click to sort">Org traffic</th>
+      <th class="sort" data-sort="acquisition_mode" title="Click to sort">How to get in</th>
+      <th>Link back?</th>
+      <th class="sort" data-sort="link_attribute" title="Click to sort">Link attr</th>
+      <th>Instructions</th>
+      <th class="sort" data-sort="status" title="Click to sort">Status</th>
+      <th title="Move this publisher to the other section">Section</th>
+    </tr></thead>
+    <tbody id="rows_free"></tbody>
+  </table>
+  </div>
+  <div class="pager">
+    <button onclick="load('free',VIEWS.free.page-1)">‹ prev</button>
+    <span id="pageinfo_free"></span>
+    <button onclick="load('free',VIEWS.free.page+1)">next ›</button>
   </div>
   </div>
 
@@ -372,9 +426,16 @@ export const ADMIN_HTML = `<!doctype html>
 <div class="toast" id="toast"></div>
 
 <script>
-let page = 1;
-let sortCol = 'cite_score';
-let sortDir = 'desc';
+// Paid and free are two sections over the same table, split on cost_type, each
+// with its own filters, paging and sort. Everything below takes the view name.
+const VIEWS = {
+  inv:  { cost: 'paid', rows: 'rows',      info: 'pageinfo',      noun: 'paid sites',
+          q: 'q',      niche: 'fniche',      status: 'fstatus',      mode: 'fmode',
+          cols: 14, page: 1, sort: 'cite_score', dir: 'desc', loaded: false },
+  free: { cost: 'free', rows: 'rows_free', info: 'pageinfo_free', noun: 'free sites',
+          q: 'q_free', niche: 'fniche_free', status: 'fstatus_free', mode: 'fmode_free',
+          cols: 11, page: 1, sort: 'cite_score', dir: 'desc', loaded: false },
+};
 const $ = (id) => document.getElementById(id);
 // Auth is the SSO session cookie — sent automatically, nothing to store.
 const hdrs = () => ({ 'content-type': 'application/json' });
@@ -543,7 +604,7 @@ function showError(target, message, retry) {
 // the table blank.
 async function boot() {
   markSortHeaders();
-  load(1).catch(e => showError('rows', 'Could not load inventory: ' + (e && e.message || e), 'load(1)'));
+  load('inv', 1).catch(e => showError('rows', 'Could not load paid inventory: ' + (e && e.message || e), "load('inv',1)"));
   stats().catch(e => showError('stats', 'Could not load totals: ' + (e && e.message || e), 'stats()'));
   loadFollowups().catch(e => showError('fol_rows', 'Could not load unfinished checkouts: ' + (e && e.message || e), 'loadFollowups()'));
   whoami().catch(e => {
@@ -555,18 +616,26 @@ async function boot() {
 }
 async function stats() {
   const s = await (await fetch('/admin/api/stats', { headers: hdrs() })).json();
+  const free = s.free_sites ?? 0;
   $('stats').innerHTML =
-    '<span><b>' + s.sites + '</b> publishers</span>' +
+    '<span><b>' + (s.paid_sites ?? s.sites) + '</b> paid</span>' +
+    '<span><b>' + free + '</b> free</span>' +
     '<span><b>' + s.active + '</b> active</span>' +
     '<span><b>' + s.priced + '</b> priced</span>' +
     '<span>avg markup <b>×' + (s.avg_markup ?? '–') + '</b></span>' +
     '<span>avg margin <b>$' + (s.avg_margin ?? '–') + '</b></span>' +
+    (s.paid_unpriced ? '<span class="warn"><b>' + s.paid_unpriced + '</b> paid, unpriced</span>' : '') +
     '<span class="warn"><b>' + s.attr_unknown + '</b> link-attr unknown</span>';
+  const ft = $('tab-free');
+  if (ft) ft.textContent = free ? ('Free inventory (' + free + ')') : 'Free inventory';
 }
 function showTab(t) {
-  for (const k of ['inv','ord','fol','ana','eng','key']) {
+  for (const k of ['inv','free','ord','fol','ana','eng','key']) {
     $('pane-' + k).style.display = t === k ? 'block' : 'none';
     $('tab-' + k).className = 'tab' + (t === k ? ' active' : '');
+  }
+  if (t === 'free' && !VIEWS.free.loaded) {
+    load('free', 1).catch(e => showError('rows_free', 'Could not load free inventory: ' + (e && e.message || e), "load('free',1)"));
   }
   if (t === 'ord') loadOrders();
   if (t === 'fol') loadFollowups();
@@ -818,43 +887,59 @@ async function analytics() {
     'No legacy free claims.');
 }
 
-function resetFilters() {
-  for (const id of ['q','fniche','fstatus','fcost','fmode']) { const el = $(id); if (el) el.value = ''; }
-  load(1);
+const val = (id) => { const el = $(id); return el ? el.value : ''; };
+
+function resetFilters(v) {
+  const view = VIEWS[v] || VIEWS.inv;
+  for (const id of [view.q, view.niche, view.status, view.mode]) { const el = $(id); if (el) el.value = ''; }
+  load(v, 1);
 }
 
-async function load(p) {
-  page = Math.max(1, p || 1);
-  const u = new URLSearchParams({ page, sort: sortCol, dir: sortDir });
-  if ($('q').value) u.set('q', $('q').value);
-  if ($('fniche').value) u.set('niche', $('fniche').value);
-  if ($('fstatus').value) u.set('status', $('fstatus').value);
-  if ($('fcost').value) u.set('cost_type', $('fcost').value);
-  if ($('fmode').value) u.set('acquisition_mode', $('fmode').value);
+// cost_type is set from the view, never from a dropdown: the tab you are on is
+// the section, so a paid site can never turn up in the free table.
+async function load(v, p) {
+  const view = VIEWS[v];
+  if (!view) return;
+  view.page = Math.max(1, p || 1);
+  const u = new URLSearchParams({ page: view.page, sort: view.sort, dir: view.dir, cost_type: view.cost });
+  if (val(view.q)) u.set('q', val(view.q));
+  if (val(view.niche)) u.set('niche', val(view.niche));
+  if (val(view.status)) u.set('status', val(view.status));
+  if (val(view.mode)) u.set('acquisition_mode', val(view.mode));
   const r = await fetch('/admin/api/sites?' + u, { headers: hdrs() });
   if (r.status === 401) { location.href = '/auth/login'; return; }
   const d = await r.json();
-  $('pageinfo').textContent = 'page ' + d.page + ' — ' + d.total + ' sites';
-  const niches = new Set([...$('fniche').options].map(o => o.value));
-  $('rows').innerHTML = (d.sites && d.sites.length)
-    ? d.sites.map(rowHtml).join('')
-    : '<tr><td colspan="13" class="empty">No sites match these filters. '
-      + '<button class="copy" onclick="resetFilters()">Reset filters</button></td></tr>';
-  d.sites.forEach(s => { if (s.niche && !niches.has(s.niche)) { const o = document.createElement('option'); o.textContent = s.niche; $('fniche').appendChild(o); niches.add(s.niche); } });
-  markSortHeaders();
+  view.loaded = true;
+  $(view.info).textContent = 'page ' + d.page + ' — ' + d.total + ' ' + view.noun;
+  const sites = d.sites || [];
+  $(view.rows).innerHTML = sites.length
+    ? sites.map(v === 'free' ? freeRowHtml : rowHtml).join('')
+    : '<tr><td colspan="' + view.cols + '" class="empty">No ' + view.noun + ' match these filters. '
+      + '<button class="copy" data-reset="' + v + '">Reset filters</button></td></tr>';
+  const sel = $(view.niche);
+  if (sel) {
+    const niches = new Set([...sel.options].map(o => o.value));
+    sites.forEach(s => { if (s.niche && !niches.has(s.niche)) { const o = document.createElement('option'); o.textContent = s.niche; sel.appendChild(o); niches.add(s.niche); } });
+  }
+  markSortHeaders(v);
 }
 const TEXT_SORT = { domain:1, niche:1, acquisition_mode:1, link_attribute:1, status:1 };
-function setSort(col) {
-  if (sortCol === col) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
-  else { sortCol = col; sortDir = TEXT_SORT[col] ? 'asc' : 'desc'; }
-  load(1);
+function setSort(v, col) {
+  const view = VIEWS[v];
+  if (!view) return;
+  if (view.sort === col) view.dir = view.dir === 'asc' ? 'desc' : 'asc';
+  else { view.sort = col; view.dir = TEXT_SORT[col] ? 'asc' : 'desc'; }
+  load(v, 1);
 }
-function markSortHeaders() {
-  document.querySelectorAll('#pane-inv th.sort').forEach(th => {
-    const on = th.dataset.sort === sortCol;
-    th.classList.toggle('sorted', on);
-    th.dataset.dir = on ? sortDir : '';
-  });
+function markSortHeaders(v) {
+  for (const k of v ? [v] : Object.keys(VIEWS)) {
+    const view = VIEWS[k];
+    document.querySelectorAll('#pane-' + k + ' th.sort').forEach(th => {
+      const on = th.dataset.sort === view.sort;
+      th.classList.toggle('sorted', on);
+      th.dataset.dir = on ? view.dir : '';
+    });
+  }
 }
 function sortMini(th) {
   const table = th.closest('table');
@@ -902,30 +987,93 @@ function rowHtml(s) {
     '<td><select data-field="link_attribute">' + attrs.map(a => '<option' + (a === s.link_attribute ? ' selected' : '') + '>' + a + '</option>').join('') + '</select></td>' +
     '<td class="num"><input type="number" data-field="max_links_per_post" data-kind="int" value="' + (s.max_links_per_post ?? '') + '"></td>' +
     '<td><select data-field="status">' + stats_.map(a => '<option' + (a === s.status ? ' selected' : '') + '>' + a + '</option>').join('') + '</select></td>' +
+    sectionCell(s) +
     '</tr>';
 }
+// The one control that moves a publisher between the two sections. Changing it
+// patches cost_type, so the row leaves this table and shows up in the other.
+function sectionCell(s) {
+  const cur = s.cost_type === 'free' ? 'free' : 'paid';
+  return '<td><select data-field="cost_type" title="Move this publisher to the other section">'
+    + ['paid','free'].map(c => '<option' + (c === cur ? ' selected' : '') + '>' + c + '</option>').join('')
+    + '</select></td>';
+}
+// Free rows have no seller price, markup, listed price or margin — those columns
+// would be four dashes on every row. What an operator needs here is how to get
+// in, whether the publisher wants a link back, and the submission instructions.
+function freeRowHtml(s) {
+  const attrs = ['unknown','dofollow','sponsored','ugc','nofollow'];
+  const stats_ = ['active','paused','burned'];
+  const modes = ['paid_placement','self_serve','apply_editorial','link_exchange','unavailable'];
+  const recip = s.requires_reciprocal_link ? 1 : 0;
+  return '<tr data-id="' + s.id + '">' +
+    '<td class="domain"><button type="button" class="domain-btn" data-open-site="' + esc(s.id) + '">' + esc(s.domain) + '</button>' + enrichPill(s) + (s.note ? '<div class="sub">' + esc(s.note).slice(0,60) + '</div>' : '') + '</td>' +
+    '<td>' + esc(s.niche ?? '–') + (s.subniche ? '<div class="sub">' + esc(s.subniche) + '</div>' : '') + '</td>' +
+    '<td class="num">' + (s.cite_score ?? '–') + '</td>' +
+    '<td class="num">' + (s.dr ?? '–') + '</td>' +
+    '<td class="num">' + (s.traffic ?? '–') + '</td>' +
+    '<td><select data-field="acquisition_mode">' + modes.map(a => '<option' + (a === s.acquisition_mode ? ' selected' : '') + '>' + a + '</option>').join('') + '</select></td>' +
+    '<td><select data-field="requires_reciprocal_link" data-kind="int">' +
+      [[0,'no'],[1,'yes']].map(o => '<option value="' + o[0] + '"' + (o[0] === recip ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select></td>' +
+    '<td><select data-field="link_attribute">' + attrs.map(a => '<option' + (a === s.link_attribute ? ' selected' : '') + '>' + a + '</option>').join('') + '</select></td>' +
+    '<td class="instr"><input data-field="agent_instructions" placeholder="how to publish…" value="' + esc(s.agent_instructions ?? '') + '"></td>' +
+    '<td><select data-field="status">' + stats_.map(a => '<option' + (a === s.status ? ' selected' : '') + '>' + a + '</option>').join('') + '</select></td>' +
+    sectionCell(s) +
+    '</tr>';
+}
+const viewOf = (el) => {
+  const body = el.closest('tbody');
+  return body && body.id === 'rows_free' ? 'free' : 'inv';
+};
 async function patch(el, field, value) {
-  const id = el.closest('tr').dataset.id;
-  const r = await fetch('/admin/api/sites/' + id, { method: 'PATCH', headers: hdrs(), body: JSON.stringify({ [field]: value }) });
+  const row = el.closest('tr');
+  const v = viewOf(el);
+  const r = await fetch('/admin/api/sites/' + row.dataset.id, { method: 'PATCH', headers: hdrs(), body: JSON.stringify({ [field]: value }) });
   const d = await r.json();
   if (!r.ok) { toast(d.error || 'update failed', true); return; }
-  const row = el.closest('tr');
-  row.querySelector('[data-col=listed]').textContent = d.site.listed_price != null ? '$' + d.site.listed_price : '–';
-  const m = d.site.listed_price != null && d.site.seller_price != null ? Math.round((d.site.listed_price - d.site.seller_price) * 100) / 100 : null;
-  const mtd = row.querySelector('[data-col=margin]');
-  mtd.textContent = m == null ? '–' : '$' + m;
-  mtd.className = 'num ' + (m > 0 ? 'margin-pos' : m < 0 ? 'margin-neg' : '');
+  // Moving a site between sections empties its row from this table, so reload
+  // both instead of patching cells that no longer belong here.
+  if (field === 'cost_type') {
+    const other = v === 'inv' ? 'free' : 'inv';
+    toast('moved to ' + value + ' inventory');
+    load(v, VIEWS[v].page);
+    if (VIEWS[other].loaded) load(other, VIEWS[other].page);
+    stats();
+    return;
+  }
+  const listed = row.querySelector('[data-col=listed]');
+  if (listed) {
+    listed.textContent = d.site.listed_price != null ? '$' + d.site.listed_price : '–';
+    const m = d.site.listed_price != null && d.site.seller_price != null ? Math.round((d.site.listed_price - d.site.seller_price) * 100) / 100 : null;
+    const mtd = row.querySelector('[data-col=margin]');
+    if (mtd) {
+      mtd.textContent = m == null ? '–' : '$' + m;
+      mtd.className = 'num ' + (m > 0 ? 'margin-pos' : m < 0 ? 'margin-neg' : '');
+    }
+  }
   toast(field + ' saved'); stats();
 }
 async function addSite() {
   const body = { domain: $('a_domain').value, niche: $('a_niche').value || null,
     seller_price: $('a_seller').value ? parseFloat($('a_seller').value) : null,
     markup: $('a_markup').value ? parseFloat($('a_markup').value) : 1.6,
-    contact_email: $('a_email').value || null };
+    contact_email: $('a_email').value || null, cost_type: 'paid' };
   const r = await fetch('/admin/api/sites', { method: 'POST', headers: hdrs(), body: JSON.stringify(body) });
   const d = await r.json();
   if (!r.ok) { toast(d.error || 'add failed', true); return; }
-  toast('added ' + d.domain); load(1); stats();
+  toast('added ' + d.domain); load('inv', 1); stats();
+}
+async function addFreeSite() {
+  const body = { domain: $('fa_domain').value, niche: $('fa_niche').value || null,
+    cost_type: 'free', acquisition_mode: $('fa_mode').value,
+    agent_instructions: $('fa_instructions').value || null,
+    requires_reciprocal_link: $('fa_recip').checked ? 1 : 0 };
+  const r = await fetch('/admin/api/sites', { method: 'POST', headers: hdrs(), body: JSON.stringify(body) });
+  const d = await r.json();
+  if (!r.ok) { toast(d.error || 'add failed', true); return; }
+  for (const id of ['fa_domain','fa_niche','fa_instructions']) { const el = $(id); if (el) el.value = ''; }
+  $('fa_recip').checked = false;
+  toast('added ' + d.domain + ' to free'); load('free', 1); stats();
 }
 // One listener for every editable cell — inline handlers needed escaping that
 // was easy to get wrong inside a template literal.
@@ -956,7 +1104,7 @@ document.getElementById('pane-fol').addEventListener('click', (ev) => {
   else copyText(followupNote(c));
 });
 
-document.getElementById('rows').addEventListener('change', (ev) => {
+function onCellChange(ev) {
   const el = ev.target;
   const field = el && el.dataset && el.dataset.field;
   if (!field) return;
@@ -964,14 +1112,21 @@ document.getElementById('rows').addEventListener('change', (ev) => {
   if (el.dataset.kind === 'float') value = value === '' ? null : parseFloat(value);
   else if (el.dataset.kind === 'int') value = value === '' ? null : parseInt(value, 10);
   patch(el, field, value);
-});
+}
+document.getElementById('rows').addEventListener('change', onCellChange);
+document.getElementById('rows_free').addEventListener('change', onCellChange);
 
-document.getElementById('pane-inv').addEventListener('click', (ev) => {
-  const open = ev.target && ev.target.closest && ev.target.closest('[data-open-site]');
-  if (open && open.dataset.openSite) { openSite(open.dataset.openSite); return; }
-  const th = ev.target && ev.target.closest && ev.target.closest('th.sort');
-  if (th && th.dataset.sort) setSort(th.dataset.sort);
-});
+for (const v of ['inv', 'free']) {
+  document.getElementById('pane-' + v).addEventListener('click', (ev) => {
+    const t = ev.target;
+    if (!t || !t.closest) return;
+    const open = t.closest('[data-open-site]');
+    if (open && open.dataset.openSite) { openSite(open.dataset.openSite, v); return; }
+    if (t.dataset && t.dataset.reset) { resetFilters(t.dataset.reset); return; }
+    const th = t.closest('th.sort');
+    if (th && th.dataset.sort) setSort(v, th.dataset.sort);
+  });
+}
 document.getElementById('pane-ana').addEventListener('click', (ev) => {
   const th = ev.target && ev.target.closest && ev.target.closest('th.sort');
   if (th) sortMini(th);
@@ -1018,9 +1173,9 @@ function siteDrawerHtml(s) {
     + sdBlock('Recent titles', sdTitles(s.recent_titles))
     + (hasProfile ? '' : '<p class="empty">No crawl profile for this domain yet.</p>');
 }
-async function openSite(id) {
+async function openSite(id, v) {
   if (!id) return;
-  showTab('inv');
+  showTab(v === 'free' ? 'free' : 'inv');
   if (siteOpenId === id) {
     $('site-drawer-bg').hidden = false;
     $('site-drawer').hidden = false;

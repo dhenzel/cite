@@ -13,13 +13,13 @@ This is the shortest path that takes real money, lets a customer’s agent write
 | Piece | State today |
 |---|---|
 | Inventory in D1 (`cite-v0`) | ~9k publishers, prices, contacts |
-| Public MCP | `estimate` / `search_publishers` / `get_publisher` / `register_account` / `add_credits` / `account_status` / `create_campaign`. **Paid inventory only** — no `claim_free_placement`, no $0 / self-serve listings |
-| `create_campaign` | `ACCOUNT_REQUIRED` or `INSUFFICIENT_CREDIT` (+ Checkout when Stripe secrets are set). Funded accounts get `FULFILLMENT_NOT_LIVE` until the allocator ships |
+| Public MCP | `estimate` / `search_publishers` / `get_publisher` / `register_account` / `add_credits` / `account_status` / `create_campaign` / `get_writing_brief` / `submit_placement`. **Paid inventory only** — no `claim_free_placement`, no $0 / self-serve listings |
+| `create_campaign` | `ACCOUNT_REQUIRED` or `INSUFFICIENT_CREDIT` (+ Checkout when Stripe secrets are set). Funded accounts get `ready_to_write` — then `get_writing_brief` + `submit_placement` |
 | Stripe | Worker implements wallet + Checkout + webhook. Live keys + D1 migration + Dashboard webhook still required. Tag `metadata.product=placement.sh` |
 | `site_content` | table exists; ~11 demo rows; `cite-mcp/src/enrich.ts` fetches homepage + RSS and stores a **brand-scrubbed** summary. Most inventory is still just a niche tag (“Tech”) |
 | Buyer emails | `account.created` on new `register_account`; `credits.added` after Checkout |
 | Operator outreach | specced as Gmail drafts (§8); not built |
-| Agent-submitted posts | specced as finished markdown (§6); not built |
+| Agent-submitted posts | **Shipped 2026-08-19:** `get_writing_brief` + `submit_placement` + D1 `placement_orders` + ops email + Orders tab. Domain stays off buyer tools. Publisher outreach still manual. |
 
 ---
 
@@ -50,12 +50,12 @@ Never capture to placement.sh before `verified`. The T+30 guarantee is only hone
 | `register_account({email})` | already exists. Keep it. Email is how we talk to the human when the agent goes idle. |
 | `account_status` | add `available_cents`, `held_cents`, `currency: "usd"`, `has_card` |
 | `add_credits({amount_usd, return_to?})` | create Stripe Checkout Session (`mode=payment`, `customer_email` from the account). Return **only** `{checkout_url, session_id, expires_at, amount_usd, next_step}`. `next_step` is a one-liner the agent reads aloud: *“Open this link, pay, then say ‘paid’.”* |
-| `create_campaign(...)` | if `available_cents < budget * 100`, do **not** fail with a dead end. Return `INSUFFICIENT_CREDIT` **plus** the same Checkout payload `add_credits` would have returned for the shortfall (round up to a pack). If funded, allocate and return `{campaign_id, allocation: [{publisher_id, listed_price, writing_brief_ref}]}` |
+| `create_campaign(...)` | if `available_cents < budget * 100` (or the publisher `listed_price`), do **not** fail with a dead end. Return `INSUFFICIENT_CREDIT` **plus** the same Checkout payload `add_credits` would have returned for the **exact shortfall**. If funded, return `{status: "ready_to_write"}` and tell the agent to call `get_writing_brief` then `submit_placement` |
 | `get_writing_brief({publisher_id})` | the brief the customer agent writes against — see §3 |
 | `submit_placement({publisher_id, campaign_id?, target_url, anchor_text, title, body, author_bio?, idempotency_key})` | finished post in. Auto-screen. Hold funds. Queue operator email. |
 | `get_order({order_id})` / `list_orders` | honest state. Domain still hidden until `published` / `verified`. |
 
-**Credit packs** (so agents don’t mint a $37.12 session): $50 / $150 / $500 / $2,000 / custom ≥ $50. `add_credits` snaps up to the next pack unless `amount_usd` is already a pack.
+**Exact amount (v1):** `add_credits` charges the USD they are buying (listed_price or budget), minimum $1. No packs yet — those can come later.
 
 **Idempotency:** `add_credits` and `submit_placement` take `idempotency_key`. Stripe Session id is stored on the account. Retrying the tool must return the **same** `checkout_url` while the session is open, not a second charge.
 
@@ -241,9 +241,9 @@ Reads the draft, actually edits, sends. Marks `outreach_sent` / `site_accepted` 
 
 ## 5. Build order (do not parallelize the money path)
 
-1. **Wallet + Stripe Checkout + webhook + `add_credits` / richer `account_status`.** **Shipped 2026-08-19** on the Worker (test keys first, then live). Internal $50 pack still required before flipping `sk_live`. Buyer email `credits.added` + `account.created`. `create_campaign` still does not allocate publishers (`FULFILLMENT_NOT_LIVE` when funded).
-2. **Enrichment pipeline** on the top ~500 score sites (enough for briefs to be real), then the rest. Wire `get_writing_brief` and richer `get_publisher.content_summary`.
-3. **`submit_placement` + auto-screen + D1 `orders` + hold.** MCP errors the agent can act on.
+1. **Wallet + Stripe Checkout + webhook + `add_credits` / richer `account_status`.** **Shipped 2026-08-19** on the Worker. Charges the exact listed_price / budget (no packs). Buyer email `credits.added` + `account.created`.
+2. **Enrichment pipeline** on the top ~500 score sites (enough for briefs to be real), then the rest. `get_writing_brief` ships on existing `site_content`; richer summaries still to backfill.
+3. **`submit_placement` + auto-screen + D1 `placement_orders` + hold + ops email + Orders tab.** **Shipped 2026-08-19.** MCP errors the agent can act on. Does not email publishers or reveal domains to buyers.
 4. **Gmail drafts** into the Shortlist inbox + console order list.
 5. **`create_campaign` allocator** that returns writing_brief refs (can stay greedy/v0).
 6. T+30 verification crawler + capture/refund (SPEC §15.7) — after one real paid order has been fulfilled by hand.

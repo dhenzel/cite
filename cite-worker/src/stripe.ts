@@ -6,8 +6,8 @@
 import { OPERATOR_NAME, OPERATOR_TEAM_URL, OPERATOR_URL, PRODUCT_ORIGIN } from './discovery.js';
 
 export const STRIPE_PRODUCT = 'placement.sh';
-export const CREDIT_PACKS_USD = [50, 150, 500, 2000] as const;
 const STRIPE_CHECKOUT_URL = 'https://api.stripe.com/v1/checkout/sessions';
+const MIN_CHARGE_CENTS = 100;
 const SIG_TOLERANCE_SEC = 300;
 
 export interface StripeEnv {
@@ -18,14 +18,11 @@ export interface StripeEnv {
 
 export const stripeConfigured = (env: StripeEnv): boolean => !!env.STRIPE_SECRET_KEY?.trim();
 
-/** Snap to a pack so agents do not mint $37.12 sessions. Custom amounts above $2000 stay as integer USD. */
-export function snapPackUsd(amountUsd: number): number {
-  const n = Math.ceil(Number(amountUsd) || 0);
-  if (n <= CREDIT_PACKS_USD[0]) return CREDIT_PACKS_USD[0];
-  for (const pack of CREDIT_PACKS_USD) {
-    if (n <= pack) return pack;
-  }
-  return n;
+/** Charge the amount they are buying. Integer cents, minimum $1. Packs can come later. */
+export function chargeCents(amountUsd: number): number {
+  const cents = Math.round(Number(amountUsd) * 100);
+  if (!Number.isFinite(cents) || cents <= 0) return MIN_CHARGE_CENTS;
+  return Math.max(MIN_CHARGE_CENTS, cents);
 }
 
 export function paidPageHtml(opts: { canceled?: boolean }): string {
@@ -86,8 +83,8 @@ export async function openCheckout(
   idempotencyKey?: string,
 ): Promise<CheckoutPayload | ReturnType<typeof stripeMissing> | { error: 'STRIPE_ERROR'; message: string; next_step: string }> {
   if (!stripeConfigured(env)) return stripeMissing();
-  const packUsd = snapPackUsd(amountUsd);
-  const amountCents = packUsd * 100;
+  const amountCents = chargeCents(amountUsd);
+  const amountUsdExact = amountCents / 100;
   const idem = (idempotencyKey || '').trim() || null;
   if (idem) {
     const existing = (await env.DB.prepare(
@@ -118,7 +115,7 @@ export async function openCheckout(
   params.set('line_items[0][price_data][currency]', 'usd');
   params.set('line_items[0][price_data][unit_amount]', String(amountCents));
   params.set('line_items[0][price_data][product_data][name]', 'placement.sh credits');
-  params.set('line_items[0][price_data][product_data][description]', `$${packUsd} prepaid credits`);
+  params.set('line_items[0][price_data][product_data][description]', `$${amountUsdExact.toFixed(2)} prepaid credits`);
   if (account.stripe_customer_id) params.set('customer', account.stripe_customer_id);
   else params.set('customer_email', account.email);
 
@@ -149,7 +146,7 @@ export async function openCheckout(
 }
 
 function toPayload(url: string, sessionId: string, expiresAt: string | null, amountCents: number): CheckoutPayload {
-  const amountUsd = Math.round(amountCents / 100);
+  const amountUsd = amountCents / 100;
   return {
     checkout_url: url,
     session_id: sessionId,
@@ -157,7 +154,7 @@ function toPayload(url: string, sessionId: string, expiresAt: string | null, amo
     amount_usd: amountUsd,
     amount_cents: amountCents,
     currency: 'usd',
-    pack: `$${amountUsd}`,
+    pack: `$${amountUsd.toFixed(2)}`,
     next_step: PAY_NEXT_STEP,
   };
 }

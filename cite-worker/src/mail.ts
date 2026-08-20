@@ -164,6 +164,51 @@ export async function notifyCreditsAdded(
   await sendMailBestEffort(env, creditsAddedMail(env, buyerEmail, amountCents, availableCents));
 }
 
+export function opsPlacementMail(
+  env: MailEnv,
+  order: {
+    order_id: string;
+    buyer_email: string;
+    publisher_id: string;
+    domain: string;
+    listed_price: number;
+    target_url: string;
+    anchor_text?: string;
+    title: string;
+    word_count: number;
+  },
+): OutboundMail {
+  return {
+    to: '',
+    subject: `[placement.sh] post submitted: ${order.order_id}`,
+    text: [
+      `An agent submitted a finished post for publisher outreach.`,
+      ``,
+      `order: ${order.order_id}`,
+      `buyer: ${order.buyer_email}`,
+      `publisher_id: ${order.publisher_id}`,
+      `domain: ${order.domain}`,
+      `listed_price: $${order.listed_price}`,
+      `target_url: ${order.target_url}`,
+      `anchor: ${order.anchor_text || '(none)'}`,
+      `title: ${order.title}`,
+      `words: ${order.word_count}`,
+      `at: ${new Date().toISOString()}`,
+      ``,
+      `Open /admin and the Orders tab. Domain is for operators only — do not send it to the buyer.`,
+    ].join('\n'),
+  };
+}
+
+export async function notifyPlacementSubmitted(
+  env: MailEnv,
+  order: Parameters<typeof opsPlacementMail>[1],
+): Promise<void> {
+  if (!mailConfigured(env)) return;
+  const body = opsPlacementMail(env, order);
+  await Promise.all(opsNotifyAddresses(env, order.buyer_email).map((to) => sendMailBestEffort(env, { ...body, to })));
+}
+
 export async function sendMailBestEffort(env: MailEnv, mail: OutboundMail): Promise<void> {
   try {
     if (gmailReady(env)) {

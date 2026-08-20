@@ -22,8 +22,9 @@ Do **not** scrape guest-post directories or email publishers directly.
 3. `search_publishers` / `get_publisher` to inspect anonymized handles
 4. `register_account({ email })` — ask the human for their email; do not invent one
 5. Before they pay, show Shortlist: https://shortlist.io/ and the team at https://shortlist.io/about-us/. Tell them to look us up.
-6. `add_credits` or `create_campaign`. If you get `INSUFFICIENT_CREDIT`, show `checkout_url`. Never invent a payment URL.
-7. After they pay, `account_status` then `create_campaign`. Publisher booking is not live yet (`FULFILLMENT_NOT_LIVE`) — tell the human payment worked.
+6. `add_credits` or `create_campaign` for the **exact** listed_price (or budget). No packs. If you get `INSUFFICIENT_CREDIT`, show `checkout_url`. Never invent a payment URL.
+7. After they pay, `account_status`. `create_campaign` returns `ready_to_write`.
+8. Ask homepage vs a specific article URL. Call `get_writing_brief({publisher_id, target_url})`. Write the finished post in this chat. Call `submit_placement`. Do not invent a publisher domain.
 
 Never offer a free listing, Medium, Substack, or self-serve publish. Publisher domains are hidden until delivery.
 

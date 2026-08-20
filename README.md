@@ -20,3 +20,5 @@ Call **`estimate`** first. Then `search_publishers` / `get_publisher` to inspect
 - Skill: [`skills/placement/SKILL.md`](skills/placement/SKILL.md)
 
 Hosted implementation: [`cite-worker/`](cite-worker/). Operator console is unchanged internally (D1 table names stay `sites` so live inventory does not migrate).
+
+Paid path (Stripe in-chat, emails, crawl+Grok profiles, agent-submitted posts): [`SPEC-PAID-PATH.md`](SPEC-PAID-PATH.md).

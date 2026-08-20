@@ -96,7 +96,7 @@ Two ways to get Grok profiles:
 
 1. **This chat (Cursor subscription).** The agent writes `enrich_prompt_v1` JSON from crawl extracts. Then:
    ```bash
-   npx tsx scripts/apply-llm-profiles.mts --in data/enrich.jsonl --profiles data/llm-profiles.jsonl
+   npx tsx scripts/apply-llm-profiles.mts --in data/enrich.jsonl --profiles data/llm-profiles.jsonl --out data/llm-merged.jsonl
    ```
 2. **Unattended 8k batch.** Create an xAI API key at [console.x.ai](https://console.x.ai/), add it to Cursor as a Cloud Agent **Runtime Secret** named `XAI_API_KEY` ([Secrets & Network](https://cursor.com/docs/cloud-agent/security-network)), and run `--llm`.
 

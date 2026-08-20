@@ -4,6 +4,8 @@
 // the cloud agent writes enrich_prompt_v1 JSON; this script scrubs and stores it.
 //
 //   npx tsx scripts/apply-llm-profiles.mts --in data/enrich.jsonl --profiles data/llm-profiles.jsonl
+//   npx tsx scripts/apply-llm-profiles.mts --in data/enrich.jsonl --profiles data/llm-profiles.jsonl --out data/llm-merged.jsonl
+// Use --out while enrich-content.mts is appending: rewriting --in in place races the crawl fd.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { leaksDomain, parseLlmProfile, scrub } from '../src/enrich-extract.js';
@@ -17,6 +19,7 @@ const flag = (name: string): string | undefined => {
 
 const inPath = resolve(flag('in') ?? 'data/enrich.jsonl');
 const profilesPath = resolve(flag('profiles') ?? 'data/llm-profiles.jsonl');
+const outPath = resolve(flag('out') ?? inPath);
 
 const asProfileJson = (p: Record<string, unknown>): string => JSON.stringify({
   audience: p.audience,
@@ -32,6 +35,7 @@ const asProfileJson = (p: Record<string, unknown>): string => JSON.stringify({
 
 const rows: EnrichRow[] = readFileSync(inPath, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as EnrichRow);
 const byId = new Map(rows.map((r) => [r.site_id, r]));
+const appliedRows: EnrichRow[] = [];
 let applied = 0;
 let skipped = 0;
 for (const line of readFileSync(profilesPath, 'utf8').split('\n')) {
@@ -57,7 +61,13 @@ for (const line of readFileSync(profilesPath, 'utf8').split('\n')) {
   row.source = 'crawl+grok-v1';
   row.enriched_at = new Date().toISOString();
   delete row.error;
+  appliedRows.push(row);
   applied++;
 }
-writeFileSync(inPath, rows.map((r) => JSON.stringify(r)).join('\n') + (rows.length ? '\n' : ''));
-console.log(`applied ${applied} Grok profiles, skipped ${skipped}`);
+if (outPath === inPath) {
+  console.warn('rewriting --in in place; do not do this while enrich-content is appending');
+  writeFileSync(inPath, rows.map((r) => JSON.stringify(r)).join('\n') + (rows.length ? '\n' : ''));
+} else {
+  writeFileSync(outPath, appliedRows.map((r) => JSON.stringify(r)).join('\n') + (appliedRows.length ? '\n' : ''));
+}
+console.log(`applied ${applied} Grok profiles, skipped ${skipped}, wrote ${outPath}`);

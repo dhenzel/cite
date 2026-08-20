@@ -157,7 +157,7 @@ export function topicsFrom(titles: string[], metaDesc: string | null, extra = ''
   return [...counts.entries()]
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .map(([w]) => w)
-    .filter((w) => w.length <= 40)
+    .filter((w) => w.length <= 40 && !w.includes('[site]') && !/^(rsquo|lsquo|ndash|mdash|nbsp|amp)$/.test(w))
     .slice(0, 12);
 }
 

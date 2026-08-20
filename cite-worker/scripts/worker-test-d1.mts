@@ -15,6 +15,12 @@ sq.exec(`
          ('cs_ccc333ddd444', 'hidden-blog.net', 'ed@hidden-blog.net', 'Tech', 50, 1.6, 80, 62, '1k–5k/mo', 'active', 'unknown');
   INSERT INTO site_content (site_id, summary, writes_about) VALUES
     ('cs_aaa111bbb222', 'B2B finance guides.', '["finance","b2b"]');
+  INSERT INTO checkout_sessions (session_id, api_key, email, amount_cents, checkout_url, expires_at, created_at)
+  VALUES ('cs_open_unpaid', 'ak_ghost', 'buyer@example.com', 19500,
+          'https://checkout.stripe.com/c/pay/cs_test_open', datetime('now', '+1 day'), datetime('now', '-2 hours'));
+  INSERT INTO checkout_sessions (session_id, api_key, email, amount_cents, checkout_url, expires_at, created_at, credited_at)
+  VALUES ('cs_paid_done', 'ak_ghost', 'buyer@example.com', 19500,
+          'https://checkout.stripe.com/c/pay/cs_test_paid', datetime('now', '-1 day'), datetime('now', '-1 day'), datetime('now', '-1 day'));
 `);
 
 // minimal D1 shim over better-sqlite3
@@ -54,6 +60,31 @@ r = await f('/admin/api/sites?q=secret', { headers: auth });
 let d = await r.json();
 assert(d.total === 1 && d.sites[0].domain === 'secret-example.com' && d.sites[0].margin === 60, 'admin list returns private fields + margin');
 assert(!('da' in d.sites[0]) && !('tf' in d.sites[0]) && !('cf' in d.sites[0]), 'admin list omits Moz/Majestic');
+r = await f('/admin/api/sites?sort=domain&dir=asc', { headers: auth });
+d = await r.json();
+{
+  const names = d.sites.map((s: { domain: string }) => s.domain);
+  assert(names.join() === [...names].sort().join(), 'admin list sorts by domain asc');
+  assert(d.sort === 'domain' && d.dir === 'asc', 'admin list echoes the sort');
+}
+r = await f('/admin/api/analytics', { headers: auth });
+{
+  const ana = await r.json();
+  assert(ana.accounts && ana.activity && ana.funnel, 'analytics payload has accounts, activity, funnel');
+  assert('funded_accounts' in ana.funnel && 'orders' in ana.funnel, 'funnel includes funded accounts and orders');
+  assert(Array.isArray(ana.niches) && Array.isArray(ana.daily), 'analytics includes niche mix and daily activity');
+  assert(Array.isArray(ana.abandoned_checkouts) && ana.abandoned_checkouts.length === 1, 'analytics lists unpaid checkouts');
+  assert(ana.abandoned_checkouts[0].email === 'buyer@example.com', 'unpaid checkout includes the buyer email');
+  assert(ana.funnel.abandoned_checkouts === 1 && ana.funnel.checkouts_paid === 1, 'funnel counts abandoned vs paid checkouts');
+}
+r = await f('/admin/api/checkouts', { headers: auth });
+{
+  const ch = await r.json();
+  assert(ch.abandoned_count === 1 && ch.paid === 1 && ch.started === 2, 'checkouts API counts opened vs paid vs unfinished');
+  assert(ch.abandoned[0].email === 'buyer@example.com' && ch.abandoned[0].amount_cents === 19500, 'checkouts API returns the person to follow up');
+  assert(ch.abandoned[0].status === 'follow_up', 'a checkout opened 2h ago is marked follow_up');
+  assert(!('api_key' in ch.abandoned[0]), 'checkouts API does not leak the buyer key');
+}
 
 // markup edit → listed price recompute (100 × 2.0 = 200)
 r = await f('/admin/api/sites/cs_aaa111bbb222', { method: 'PATCH', headers: auth, body: JSON.stringify({ markup: 2.0 }) });
@@ -289,6 +320,9 @@ assert(ad.added === true && ad.listed_price === 100, 'admin_add_site computes li
 ad = await adminCall('admin_analytics', {});
 assert(ad.accounts.total === 1 && ad.activity.queries_total > 0, 'admin_analytics reports signups and queries');
 assert(Array.isArray(ad.top_topics) && Array.isArray(ad.unmet_demand), 'analytics includes demand views');
+assert(ad.funnel && typeof ad.funnel.funded_accounts === 'number', 'analytics funnel includes funded accounts');
+assert(Array.isArray(ad.niches), 'analytics includes inventory by niche');
+assert(Array.isArray(ad.abandoned_checkouts) && ad.funnel.abandoned_checkouts === 1, 'admin_analytics surfaces unpaid checkouts for follow-up');
 
 console.log('\nall extended checks passed');
 
@@ -406,6 +440,8 @@ const fs2 = (path: string, init?: RequestInit) => worker.fetch(new Request(`http
 r = await fs2('/admin');
 let page = await r.text();
 assert(r.status === 200 && page.includes('Sign in with Shortlist'), 'console shows the Sign in with Shortlist button');
+assert(page.includes('#17204B') && page.includes('#30D2AD') && page.includes('Inter'), 'sign-in uses Shortlist navy, mint and Inter');
+assert(page.includes('shortlist') && page.includes('class="logo"'), 'sign-in shows the Shortlist wordmark');
 assert(page.indexOf('Sign in with Shortlist') < page.indexOf('operator token'),
   'SSO is the primary path; the operator token is a secondary fallback');
 
@@ -455,6 +491,18 @@ r = await fs2('/admin', { headers: { cookie } });
   const consoleHtml = await r.text();
   assert(consoleHtml.includes('operator console'), 'session opens the console');
   assert(consoleHtml.includes('Orders'), 'console has an Orders tab');
+  assert(consoleHtml.includes('#17204B') && consoleHtml.includes('#30D2AD'), 'console uses Shortlist navy and mint');
+  assert(consoleHtml.includes('class="logo"') && consoleHtml.includes('shortlist'), 'console shows the Shortlist wordmark');
+  assert(consoleHtml.includes('Click to sort'), 'column headers advertise sorting');
+  assert(consoleHtml.includes('Copy post'), 'Orders tab can copy the post out of the platform');
+  assert(consoleHtml.includes('data-sort="cite_score"') && consoleHtml.includes('data-sort="listed_price"'),
+    'inventory columns are sortable');
+  assert(consoleHtml.includes('id="a_funnel"') && consoleHtml.includes('id="a_spark"'),
+    'analytics has a funnel and 14-day chart');
+  assert(consoleHtml.includes('Follow-up') && consoleHtml.includes('id="pane-fol"'),
+    'console has a Follow-up tab for unfinished checkouts');
+  assert(consoleHtml.includes('Copy follow-up') && consoleHtml.includes('/admin/api/checkouts'),
+    'Follow-up tab can copy a note and loads unpaid checkouts');
 }
 r = await fs2('/admin/api/sites?q=secret', { headers: { cookie } });
 const sitesPayload = await r.json();
@@ -984,6 +1032,8 @@ console.log('\nall admin-key checks passed');
   assert(r.status === 200 && orders.orders?.[0]?.domain === 'secret-example.com', 'ops Orders API shows the publisher domain');
   assert(orders.orders[0].buyer_email === 'payer@customer.test', 'ops Orders API shows the buyer');
   assert(orders.orders[0].title.includes('durable record'), 'ops Orders API shows the submitted title');
+  assert(typeof orders.orders[0].body === 'string' && orders.orders[0].body.length > 200,
+    'ops Orders API includes the post body so operators can copy it');
 
   const other = JSON.stringify({
     type: 'checkout.session.completed',

@@ -23,6 +23,13 @@ await pg.route('**/admin/api/**', r => {
   if (u.includes('/api/stats')) return r.fulfill({ json: { sites: 9467, active: 9467, priced: 8210, avg_markup: 1.6, avg_margin: 60, attr_unknown: 9400 } });
   if (u.includes('/api/analytics')) return r.fulfill({ json: { accounts: { total: 0 }, activity: {}, by_tool: [], daily: [], signups: [], unmet_demand: [], top_topics: [], free_placements_by_site: [], inventory_readiness: {} } });
   if (u.includes('/api/keys')) return r.fulfill({ json: { keys: [], mcp_url: 'http://cite.local/admin/mcp' } });
+  if (u.includes('/api/checkouts')) return r.fulfill({ json: { started: 1, paid: 0, abandoned_count: 1, abandoned_cents: 19500, abandoned: [{ email: 'buyer@example.com', amount_cents: 19500, status: 'follow_up', created_at: '2026-08-19 16:00:00', checkout_url: 'https://checkout.stripe.com/c/pay/cs_test' }] } });
+  if (u.includes('/api/orders')) return r.fulfill({ json: { orders: [{
+    id: 'ord_1', state: 'human_review', publisher_id: 'cs_1', domain: 'secret.com',
+    target_url: 'https://buyer.test/', anchor_text: 'Buyer', title: 'A post',
+    body: 'Hello world post body', listed_price_cents: 16000, word_count: 800,
+    created_at: '2026-08-19T12:00:00Z', buyer_email: 'a@b.test',
+  }] } });
   if (u.includes('/api/sites')) return r.fulfill({ json: { total: 9467, page: 1, per_page: 50, sites } });
   return r.fulfill({ json: {} });
 });
@@ -31,12 +38,36 @@ await pg.waitForTimeout(1200);
 const rowCount = await pg.locator('#rows tr').count();
 console.log('rows:', rowCount);
 if (rowCount < 1) { console.error('FAIL: inventory table rendered no rows'); process.exitCode = 1; }
-for (const tab of ['ana', 'eng', 'key']) {
+const logo = await pg.locator('.logo').textContent();
+if (!/shortlist/.test(logo || '')) { console.error('FAIL: Shortlist wordmark missing'); process.exitCode = 1; }
+let lastSites = '';
+pg.on('request', req => { if (req.url().includes('/admin/api/sites')) lastSites = req.url(); });
+await pg.click('#pane-inv th[data-sort="listed_price"]');
+await pg.waitForTimeout(600);
+if (!/sort=listed_price/.test(lastSites)) {
+  console.error('FAIL: clicking Listed $ did not sort, last request', lastSites);
+  process.exitCode = 1;
+}
+console.log('sort request:', lastSites);
+for (const tab of ['ord', 'fol', 'ana', 'eng', 'key']) {
   await pg.click('#tab-' + tab);
   await pg.waitForTimeout(500);
   const visible = await pg.locator('#pane-' + tab).isVisible();
   console.log('tab', tab, 'visible:', visible);
   if (!visible) { console.error('FAIL: tab ' + tab + ' did not open'); process.exitCode = 1; }
+}
+await pg.click('#tab-fol');
+await pg.waitForTimeout(400);
+{
+  const fol = await pg.locator('#pane-fol').textContent();
+  if (!/buyer@example.com/.test(fol || '')) {
+    console.error('FAIL: Follow-up tab did not show the unpaid checkout email');
+    process.exitCode = 1;
+  }
+  if (!/Did not finish/.test(fol || '')) {
+    console.error('FAIL: Follow-up tab did not count unfinished checkouts');
+    process.exitCode = 1;
+  }
 }
 console.log('page errors:', errs.length ? errs : 'none');
 if (errs.length) { console.error('FAIL: the console page threw'); process.exitCode = 1; }

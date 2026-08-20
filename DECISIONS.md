@@ -209,6 +209,20 @@ What we have in D1 today: DR + organic traffic from the sheet. The extra overvie
 
 Exact organic traffic uniquely identifies a site in Ahrefs. That is accepted: we are showing the same numbers Ahrefs shows an end user, not a Moz/Majestic fingerprinting combo.
 
+## 2026-08-19 — orders stay in the console; copy and send by hand
+
+David: the order can stay inside the platform for now; copy it out and send it to the person. Notify when an order comes in, then take it from there. Context Engine for fulfilment is later, not now.
+
+**Decision:** no Gmail drafts to publishers, no auto-send. `notifyPlacementSubmitted` emails ops. Operators open `/admin` → Orders, copy the post, and email the publisher themselves. Domain stays operator-only.
+
+**Console look:** operator console (including sign-in) uses Shortlist.io brand tokens — Inter, navy `#17204B`, mint `#30D2AD`, cyan `#00AADD` — light surfaces, not the previous dark console.
+
+## 2026-08-19 — unfinished Checkouts stay in Follow-up
+
+David: if somebody opens Checkout and does not pull through, we want that visible so we can follow up with that person.
+
+**Decision:** unpaid Stripe Checkout sessions (`checkout_sessions.credited_at IS NULL`) show in `/admin` → Follow-up: email, amount, when they started, whether the Stripe link is still open. Ops copy / mailto from here. No automatic nudge sequence.
+
 ## Still open
 
 1. **Domain + trademark check for "Cite"** (§13.1) — **closed as a brand**: ship as placement.sh. Cite remains the repo/worker name.
@@ -217,5 +231,5 @@ Exact organic traffic uniquely identifies a site in Ahrefs. That is accepted: we
 4. **Link-attribute backfill** — dofollow/sponsored unknown across 9,453 sites; mandatory field before launch (§12b).
 5. **Build team** — who drives the v1 build (agent-driven by David, Shortlist devs, or a hire).
 6. **Shortlist's own repositioning** — independent open question; not resolved by shipping Cite.
-7. **Which Shortlist mailbox / named sender** owns v1 Gmail drafts.
+7. **Which Shortlist mailbox / named sender** owns v1 Gmail drafts — **deferred.** Orders stay in `/admin`; operators copy and send by hand. Revisit drafts / Context Engine writes after that loop is in use.
 8. **xAI vs other LLM** for enrichment if Grok API access is awkward — prompt and JSON shape stay; the vendor is swappable.

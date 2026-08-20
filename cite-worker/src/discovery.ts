@@ -2,6 +2,18 @@
 
 export const SERVER_NAME = 'placement.sh';
 export const SERVER_VERSION = '0.4.0';
+export const PRODUCT_ORIGIN = 'https://placement.sh';
+export const PRODUCT_HOST = 'placement.sh';
+
+/** Origin we print on connect cards, install commands, and minted admin keys. */
+export function productOrigin(reqUrl: string | URL): string {
+  const url = typeof reqUrl === 'string' ? new URL(reqUrl) : reqUrl;
+  const host = url.hostname.toLowerCase();
+  if (host === 'localhost' || host === '127.0.0.1' || host.endsWith('.test')) return url.origin;
+  return PRODUCT_ORIGIN;
+}
+
+export const isWorkersDev = (hostname: string) => hostname.toLowerCase().endsWith('.workers.dev');
 
 export const INSTALL_HINT = (origin: string) =>
   `claude mcp add --transport http placement ${origin}/mcp`;

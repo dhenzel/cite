@@ -10,6 +10,7 @@
 import { ADMIN_HTML, signInPage } from './admin-ui.js';
 import {
   homepageText, LLMS_TXT, SERVER_NAME, SERVER_VERSION, serverCard, serverJson,
+  productOrigin, isWorkersDev, PRODUCT_HOST,
 } from './discovery.js';
 import { homepageHtml } from './homepage.js';
 import { buildAuthUrl, handleCallback, describeOidcFailure, diagnostics, OidcNotConfigured, OidcError } from './oidc.js';
@@ -686,7 +687,7 @@ async function handleAdminApi(req: Request, env: Env, path: string): Promise<Res
           last_used_at: r.last_used_at,
           revoked: !!r.revoked_at,
         })),
-        mcp_url: `${new URL(req.url).origin}/admin/mcp`,
+        mcp_url: `${productOrigin(req.url)}/admin/mcp`,
       });
     }
 
@@ -703,13 +704,13 @@ async function handleAdminApi(req: Request, env: Env, path: string): Promise<Res
       await env.DB.prepare(`
         INSERT INTO admin_keys (key, sub, label, created_at) VALUES (?, ?, ?, datetime('now'))
       `).bind(key, session.sub, (body.label as string) || 'admin MCP', ).run();
-      const origin = new URL(req.url).origin;
+      const origin = productOrigin(req.url);
       return json({
         key,                       // shown once
         mcp_url: `${origin}/admin/mcp`,
         connect_command: `claude mcp add --transport http placement-admin ${origin}/admin/mcp --header "Authorization: Bearer ${key}"`,
         connector_url: `${origin}/admin/mcp/${key}`,
-        note: 'Copy this now — it is not shown again. Revoke it any time from the console.',
+        note: 'Copy this now — it is not shown again. Revoke it any time from the console. The URL is always https://placement.sh — do not use any other hostname.',
       }, 201);
     }
 
@@ -1037,7 +1038,7 @@ const adminTools = [
   },
   {
     name: 'admin_update_metrics',
-    description: 'Push refreshed SEO metrics for a site (dr, da, tf, cf, traffic, spam) and recompute its Cite Score and traffic band. Use after an Ahrefs/Moz refresh.',
+    description: 'Push refreshed SEO metrics for a publisher (dr, da, tf, cf, traffic, spam) and recompute its Placement Score and traffic band. Use after an Ahrefs/Moz refresh.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1283,18 +1284,28 @@ export default {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
     // www is a Custom Domain so TLS works; send browsers to the apex.
     if (url.hostname.toLowerCase() === 'www.placement.sh' && (req.method === 'GET' || req.method === 'HEAD')) {
-      url.hostname = 'placement.sh';
+      url.hostname = PRODUCT_HOST;
       return new Response(null, { status: 301, headers: { location: url.toString(), ...CORS } });
     }
+    // The Worker still has a workers.dev hostname. Never hand that URL to a
+    // human or an agent — Connect tabs, bookmarks, and SSO all live on placement.sh.
+    if (isWorkersDev(url.hostname) && (req.method === 'GET' || req.method === 'HEAD')) {
+      const dest = new URL(req.url);
+      dest.protocol = 'https:';
+      dest.hostname = PRODUCT_HOST;
+      dest.port = '';
+      return new Response(null, { status: 301, headers: { location: dest.toString(), ...CORS } });
+    }
+    const origin = productOrigin(url);
     if (url.pathname === '/mcp') return handleMcp(req, env);
     if (url.pathname === '/llms.txt' || url.pathname === '/llms-full.txt') {
       return new Response(LLMS_TXT, { headers: { 'content-type': 'text/plain; charset=utf-8', ...CORS } });
     }
     if (url.pathname === '/.well-known/mcp/server.json') {
-      return json(serverJson(url.origin));
+      return json(serverJson(origin));
     }
     if (url.pathname === '/.well-known/mcp/server-card.json') {
-      return json(serverCard(url.origin));
+      return json(serverCard(origin));
     }
     if (url.pathname === '/health') {
       const n = (await env.DB.prepare(`SELECT COUNT(*) AS n FROM sites`).first()) as { n: number };
@@ -1341,12 +1352,12 @@ export default {
     if (url.pathname === '/') {
       const accept = req.headers.get('accept') ?? '';
       if (accept.includes('text/html')) {
-        return new Response(homepageHtml(url.origin), {
+        return new Response(homepageHtml(origin), {
           headers: { 'content-type': 'text/html; charset=utf-8', ...CORS },
         });
       }
       return new Response(
-        homepageText(url.origin),
+        homepageText(origin),
         { headers: { 'content-type': 'text/plain; charset=utf-8', ...CORS } },
       );
     }

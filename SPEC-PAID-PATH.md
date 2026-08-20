@@ -263,7 +263,7 @@ GMAIL_*                     # operator drafts only
 XAI_API_KEY                 # enrich script, not public MCP
 ```
 
-OIDC redirect should be `https://placement.sh/auth/callback` (still on workers.dev as of 2026-08-18 deploy — fix in the same paid-path pass if Shortlist SSO is still broken).
+OIDC redirect is `https://placement.sh/auth/callback` (`wrangler.toml` `[vars]`). Register that URI on the Shortlist IdP. GET/HEAD on `*.workers.dev` redirects to placement.sh.
 
 ---
 

@@ -25,8 +25,8 @@ export interface SiteRow {
 
 export function publicSite(row: SiteRow, detail = false) {
   const base = {
-    site_id: row.id,
-    cite_score: row.cite_score,
+    publisher_id: row.id,
+    placement_score: row.cite_score,
     niche: row.niche,
     subniche: row.subniche || undefined,
     traffic_band: row.traffic_band,

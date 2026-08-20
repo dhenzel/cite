@@ -26,7 +26,7 @@ npx wrangler deploy --keep-vars
 
 `--keep-vars` preserves `ADMIN_TOKEN`, OIDC secrets, and `SESSION_SECRET`. If deploy errors on an existing CNAME, delete that DNS record in the placement.sh zone and redeploy. Apex A/AAAA placeholders are usually replaced.
 
-Until that deploy runs, the live origin is still `https://cite-mcp.d-henzel.workers.dev`.
+Public and operator URLs are always `https://placement.sh` (MCP at `/mcp`, console at `/admin`, admin MCP at `/admin/mcp`). The `cite-mcp.*.workers.dev` hostname still exists as a Cloudflare Worker URL; GET/HEAD there redirects to placement.sh. Never mint connector URLs on workers.dev.
 
 ## First-time setup
 

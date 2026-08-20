@@ -1,4 +1,4 @@
-// Plays the buyer agent against the Cite v0 MCP server, end to end:
+// Plays the buyer agent against the local placement.sh MCP, end to end:
 // stats → search → inspect → estimate. Run from cite-mcp/: npm run demo
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
@@ -19,11 +19,11 @@ const call = async (name: string, args: Record<string, unknown> = {}) => {
   return JSON.parse(text);
 };
 
-console.log('=== Cite v0 demo: an agent shops for fintech links, $4k budget ===');
+console.log('=== placement.sh demo: an agent shops for fintech links, $4k budget ===');
 
 await call('inventory_stats');
 
-const search = await call('search_sites', {
+const search = await call('search_publishers', {
   topics: ['finance', 'business', 'investing'],
   min_score: 60,
   max_price: 350,
@@ -38,8 +38,8 @@ if (/@|\.com|\.net|\.org/i.test(leakProbe.replace(/250k\+\/mo/g, ''))) {
   console.log('\n[leak check] no domains or emails in search payload ✓');
 }
 
-for (const site of (search.sites as { site_id: string }[]).slice(0, 2)) {
-  await call('get_site', { site_id: site.site_id });
+for (const pub of (search.publishers as { publisher_id: string }[]).slice(0, 2)) {
+  await call('get_publisher', { publisher_id: pub.publisher_id });
 }
 
 await call('estimate', { topics: ['finance', 'business'], budget: 4000, risk_tolerance: 'balanced' });

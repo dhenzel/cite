@@ -2,7 +2,7 @@
   "name": "cite-mcp",
   "version": "0.1.0",
   "private": true,
-  "description": "Cite v0 — agent-native link placement marketplace MCP server (prototype)",
+  "description": "placement.sh local MCP prototype — paid publisher placements",
   "type": "module",
   "scripts": {
     "import": "tsx src/import.ts",

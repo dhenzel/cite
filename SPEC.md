@@ -1,8 +1,11 @@
-# Cite — agent-native link placement marketplace (spec v1)
+# placement.sh — agent-native link placement marketplace (spec v1)
 
+**Public brand:** placement.sh. Buyer-facing APIs say **publisher** / **Placement Score**, never Cite / site.
 **Status:** build-ready spec, v1. Settled with David Henzel on 2026-08-12; decisions updated 2026-08-13 (see `DECISIONS.md`).
-**Owner:** shortlist.io. **Working product name:** Cite.
+**Owner:** shortlist.io (quiet). Historical sections below still say “Cite”; that was the working name.
 **Purpose of this document:** open it in Claude Code and start building with no other context.
+
+D1 tables stay `sites` so live inventory does not migrate. Cloudflare Worker script name stays `cite-mcp`. Neither name is shown to buyers or in Connect URLs.
 
 ---
 

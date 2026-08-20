@@ -88,7 +88,11 @@ assert(r.status === 404, 'oauth discovery probes still 404');
 r = await f('/llms.txt');
 assert(r.status === 200 && (await r.text()).includes('placement.sh'), 'llms.txt served for agents');
 r = await f('/.well-known/mcp/server.json');
-assert((await r.json()).name === 'sh.placement/mcp', 'MCP registry server.json');
+{
+  const card = await r.json();
+  assert(card.name === 'sh.placement/mcp', 'MCP registry server.json');
+  assert(!JSON.stringify(card).includes('github.com') && !card.repository, 'server card does not expose a GitHub repo');
+}
 r = await f('/');
 assert((await r.text()).includes('claude mcp add --transport http placement'), 'homepage install command');
 r = await worker.fetch(new Request('https://placement.sh/', { headers: { accept: 'text/html' } }), env);
@@ -96,6 +100,8 @@ const home = await r.text();
 assert(r.status === 200 && (r.headers.get('content-type') ?? '').includes('text/html'), 'browser homepage is HTML');
 assert(home.includes('Buy publisher placements') && home.includes('Claude') && home.includes('ChatGPT') && home.includes('Grok') && home.includes('Kimi') && home.includes('Cursor'), 'homepage names the product and agent buttons');
 assert(home.includes('https://placement.sh/mcp') && !home.includes('Shortlist'), 'homepage shows MCP URL and stays quiet on ownership');
+assert(!home.includes('window.open') && !home.includes('cursor://') && !/https:\/\/(claude\.ai|chatgpt\.com|grok\.com)\//.test(home), 'agent buttons stay on-page and do not deep-link out');
+assert(home.includes('data-client="cursor"') && !home.includes('<a class="btn"'), 'Cursor is a button like the others, not an outbound link');
 r = await worker.fetch(new Request('https://www.placement.sh/llms.txt'), env);
 assert(r.status === 301 && r.headers.get('location') === 'https://placement.sh/llms.txt', 'www redirects to apex');
 r = await worker.fetch(new Request('https://mcp.placement.sh/mcp', {

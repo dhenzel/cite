@@ -4,15 +4,9 @@ const esc = (s: string) =>
   s.replace(/[&<>"']/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
 
-const cursorDeeplink = (mcp: string) => {
-  const config = btoa(JSON.stringify({ url: mcp }));
-  return `cursor://anysphere.cursor-deeplink/mcp/install?name=placement&config=${config}`;
-};
-
 export const homepageHtml = (origin: string): string => {
   const mcp = `${origin.replace(/\/$/, '')}/mcp`;
   const mcpEsc = esc(mcp);
-  const cursor = esc(cursorDeeplink(mcp));
 
   return `<!doctype html>
 <html lang="en">
@@ -83,7 +77,7 @@ export const homepageHtml = (origin: string): string => {
     gap: 0.5rem;
     margin: 0 0 1.4rem;
   }
-  .clients button, .clients a.btn {
+  .clients button {
     appearance: none;
     display: inline-flex;
     align-items: center;
@@ -99,10 +93,16 @@ export const homepageHtml = (origin: string): string => {
     cursor: pointer;
     text-decoration: none;
   }
-  .clients button:hover, .clients a.btn:hover { filter: brightness(1.08); }
-  .clients button:focus-visible, .clients a.btn:focus-visible {
+  .clients button:hover { filter: brightness(1.08); }
+  .clients button:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
+  }
+  .clients button[aria-pressed="true"] {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-ink);
+    filter: none;
   }
   .urlrow {
     display: flex;
@@ -144,13 +144,14 @@ export const homepageHtml = (origin: string): string => {
   .panel p, .panel ol { color: var(--muted); font-size: 0.95rem; margin: 0 0 0.7rem; }
   .panel ol { padding-left: 1.15rem; }
   .panel pre {
-    margin: 0;
+    margin: 0 0 0.7rem;
     overflow-x: auto;
     background: var(--bg);
     border-radius: 8px;
     padding: 0.7rem 0.8rem;
     font: 12.5px/1.45 ui-monospace, Menlo, Consolas, monospace;
   }
+  .panel .ask { color: var(--ink); }
   .panel .muted { color: var(--muted); }
   footer {
     margin-top: 2.6rem;
@@ -174,12 +175,12 @@ export const homepageHtml = (origin: string): string => {
   </ol>
 
   <h2>Add to your agent</h2>
-  <div class="clients" role="group" aria-label="Add placement.sh to an agent">
-    <button type="button" data-client="claude">Claude</button>
-    <button type="button" data-client="chatgpt">ChatGPT</button>
-    <button type="button" data-client="grok">Grok</button>
-    <button type="button" data-client="kimi">Kimi</button>
-    <a class="btn" data-client="cursor" href="${cursor}">Cursor</a>
+  <div class="clients" role="group" aria-label="Show setup steps for an agent">
+    <button type="button" data-client="claude" aria-pressed="false">Claude</button>
+    <button type="button" data-client="chatgpt" aria-pressed="false">ChatGPT</button>
+    <button type="button" data-client="grok" aria-pressed="false">Grok</button>
+    <button type="button" data-client="kimi" aria-pressed="false">Kimi</button>
+    <button type="button" data-client="cursor" aria-pressed="false">Cursor</button>
   </div>
 
   <div class="urlrow">
@@ -188,7 +189,7 @@ export const homepageHtml = (origin: string): string => {
   </div>
 
   <div class="panel" id="panel" aria-live="polite">
-    <p class="muted">Pick an agent. We copy the MCP URL and show the steps — most clients paste it into Connectors.</p>
+    <p class="muted">Pick an agent. Steps stay here — we don’t send you into the product.</p>
   </div>
 
   <footer>
@@ -200,50 +201,46 @@ export const homepageHtml = (origin: string): string => {
 <script>
 (function () {
   var MCP = ${JSON.stringify(mcp)};
+  var ASK = "Then tell it: Get https://example.com cited on [topics], budget $X. It should call estimate first.";
   var guides = {
     claude: {
-      title: "Claude",
-      open: "https://claude.ai/new#settings/customize-connectors",
+      title: "In Claude",
       steps: [
-        "URL copied. Claude → Customize → Connectors → Add custom connector.",
-        "Paste the MCP URL. No OAuth needed for the public tools.",
+        "Customize → Connectors → Add custom connector.",
+        "Paste the MCP URL. No OAuth for the public tools.",
         "Or in a terminal:"
       ],
       cmd: ${JSON.stringify(`claude mcp add --transport http placement ${mcp}`)}
     },
     chatgpt: {
-      title: "ChatGPT",
-      open: "https://chatgpt.com/#settings/Connectors",
+      title: "In ChatGPT",
       steps: [
-        "URL copied. In ChatGPT: Settings → Apps → Advanced settings → turn on Developer mode.",
+        "Settings → Apps → Advanced settings → turn on Developer mode.",
         "Create a custom connector named placement. Paste the MCP URL. Authentication: none.",
         "In a chat, enable the connector from the tools menu."
       ]
     },
     grok: {
-      title: "Grok",
-      open: "https://grok.com/manage-connectors",
+      title: "In Grok",
       steps: [
-        "URL copied. On grok.com open Connectors and add a custom connector with this URL.",
+        "Open Connectors and add a custom connector with this MCP URL.",
         "Or in a terminal:"
       ],
       cmd: ${JSON.stringify(`grok mcp add --transport http placement ${mcp}`)}
     },
     kimi: {
-      title: "Kimi",
-      open: "",
+      title: "In Kimi",
       steps: [
-        "URL copied. Kimi’s web app does not take custom connectors — use Kimi Code or the CLI.",
+        "The Kimi web app does not take custom connectors — use Kimi Code or the CLI.",
         "In Kimi Code: /mcp-config → add by URL. Or:"
       ],
       cmd: ${JSON.stringify(`kimi mcp add --transport http placement ${mcp}`)}
     },
     cursor: {
-      title: "Cursor",
-      open: "",
+      title: "In Cursor",
       steps: [
-        "If Cursor is installed, the button opens an install prompt.",
-        "Otherwise add a remote server in Cursor Settings → MCP, URL:"
+        "Settings → MCP → Add a new global MCP server.",
+        "Type: Streamable HTTP. URL:"
       ],
       cmd: MCP
     }
@@ -261,15 +258,17 @@ export const homepageHtml = (origin: string): string => {
     g.steps.forEach(function (s) { html += "<li>" + s + "</li>"; });
     html += "</ol>";
     if (g.cmd) html += "<pre>" + g.cmd.replace(/</g, "&lt;") + "</pre>";
+    html += '<p class="ask">' + ASK + "</p>";
     document.getElementById("panel").innerHTML = html;
   }
   document.querySelectorAll("[data-client]").forEach(function (el) {
     el.addEventListener("click", function () {
       var id = el.getAttribute("data-client");
-      var g = guides[id];
+      document.querySelectorAll("[data-client]").forEach(function (b) {
+        b.setAttribute("aria-pressed", b === el ? "true" : "false");
+      });
       copy(MCP);
       render(id);
-      if (g && g.open) window.open(g.open, "_blank", "noopener");
     });
   });
   document.getElementById("copy-url").addEventListener("click", function () {

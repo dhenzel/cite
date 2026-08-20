@@ -68,7 +68,6 @@ export const serverJson = (origin: string) => ({
   description:
     'Buy publisher placements so a URL gets cited in Google, ChatGPT, Perplexity, and AI Overviews. Agent states a budget; placement.sh books the campaign.',
   version: SERVER_VERSION,
-  repository: { url: 'https://github.com/dhenzel/cite', source: 'github' },
   remotes: [{ type: 'streamable-http', url: `${origin}/mcp` }],
 });
 

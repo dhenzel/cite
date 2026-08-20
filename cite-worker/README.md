@@ -24,7 +24,7 @@ cd cite-worker
 npx wrangler deploy --keep-vars
 ```
 
-`--keep-vars` preserves `ADMIN_TOKEN`, OIDC secrets, and `SESSION_SECRET`. If deploy errors on an existing CNAME, delete that DNS record in the placement.sh zone and redeploy. Apex A/AAAA placeholders are usually replaced.
+`--keep-vars` preserves `ADMIN_TOKEN`, OIDC secrets, `SESSION_SECRET`, and mail secrets (`GMAIL_*` / `RESEND_API_KEY`). If deploy errors on an existing CNAME, delete that DNS record in the placement.sh zone and redeploy. Apex A/AAAA placeholders are usually replaced.
 
 Public and operator URLs are always `https://placement.sh` (MCP at `/mcp`, console at `/admin`, admin MCP at `/admin/mcp`). The `cite-mcp.*.workers.dev` hostname still exists as a Cloudflare Worker URL; GET/HEAD there redirects to placement.sh. Never mint connector URLs on workers.dev.
 
@@ -37,6 +37,16 @@ npx wrangler d1 execute cite-v0 --remote --file=/path/to/seed.sql
 npx wrangler secret put ADMIN_TOKEN
 npx wrangler deploy --keep-vars
 ```
+
+Buyer signup mail is From `placement@shortlist.io`. Create that Workspace user, then put Gmail OAuth secrets (authorize as that mailbox with `gmail.send`):
+
+```bash
+npx wrangler secret put GMAIL_CLIENT_ID
+npx wrangler secret put GMAIL_CLIENT_SECRET
+npx wrangler secret put GMAIL_REFRESH_TOKEN
+```
+
+If Gmail is not ready, `RESEND_API_KEY` is the fallback (verify `shortlist.io` on Resend). Signup still works if neither is set.
 
 ## Tests
 

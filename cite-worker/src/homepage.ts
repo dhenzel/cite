@@ -1,6 +1,6 @@
 /** Public landing page. What it is, who runs it, how to use it, add-to-agent buttons. */
 
-import { OPERATOR_NAME, OPERATOR_TEAM_URL, OPERATOR_URL } from './discovery.js';
+import { BUYER_MAIL_FROM, OPERATOR_NAME, OPERATOR_TEAM_URL, OPERATOR_URL } from './discovery.js';
 
 const esc = (s: string) =>
   s.replace(/[&<>"']/g, (c) =>
@@ -225,7 +225,8 @@ export const homepageHtml = (origin: string): string => {
       · <a href="${esc(OPERATOR_TEAM_URL)}">Meet the team</a>.</p>
     <p class="meta">Streamable HTTP MCP · POST ${mcpEsc}<br>
     Agents: <a href="/llms.txt">/llms.txt</a>
-    · <a href="/.well-known/mcp/server.json">server card</a></p>
+    · <a href="/.well-known/mcp/server.json">server card</a>
+    · <a href="mailto:${esc(BUYER_MAIL_FROM)}">${esc(BUYER_MAIL_FROM)}</a></p>
   </footer>
 </main>
 <script>

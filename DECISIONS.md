@@ -143,7 +143,7 @@ Paying humans land on a site with no company, no people, no aged domain. That re
 **Decision (updated 2026-08-19):**
 - **Human website:** a visible “Who runs this” block plus footer — Shortlist since 2018, links to [shortlist.io](https://shortlist.io/) and [the team](https://shortlist.io/about-us/). Copy is explanatory, not a banner about “programmatic placements at scale.”
 - **Buyer MCP (Claude etc.):** `help`, initialize `instructions`, `/llms.txt`, `register_account`, and the payment/`INSUFFICIENT_CREDIT` `next_step` tell the agent to show Shortlist + the team page **before the human pays**. Inventory stays blind. Do not invent a different owner.
-- **Buyer mail From `@shortlist.io`**, not `hello@placement.sh`. Anja/ops use the Shortlist mailbox.
+- **Buyer mail From `placement@shortlist.io`**, not `hello@placement.sh`. Anja/ops use the Shortlist mailbox.
 - **Publisher outreach unchanged:** named Shortlist human, never From placement.sh.
 - **Hermes** is a first-class add-to-agent option on the homepage (`hermes mcp add placement --url …`).
 
@@ -152,6 +152,12 @@ Paying humans land on a site with no company, no people, no aged domain. That re
 David: an agent should query as much as it wants so the human can figure out what to write. No result cap. Smooth, natural, guided by MCP. Payment only when they submit.
 
 **Decision:** drop the anonymous-10 / registered-50 search caps. `search_publishers` pages (`limit` default 50, max 200, `offset` for the rest) so a 9k catalog does not dump into one MCP turn. `help` and initialize tell the agent to keep browsing, then show Shortlist, then ask for email, then pay. Registering does not unlock extra results — it unlocks booking.
+
+## 2026-08-19 — buyer mail From placement@shortlist.io
+
+David: customers and people who sign up should get mail from `placement@shortlist.io`.
+
+**Decision:** buyer transactional From/Reply-To is `placement.sh <placement@shortlist.io>` (Shortlist Google Workspace). The Worker sends `account.created` on a *new* `register_account` (welcome to the buyer + ops ping to that mailbox and `CITE_ADMIN_EMAILS`). Re-register of an existing email does not resend. Transport is Gmail API secrets, else Resend. No Cloudflare Email Sending on placement.sh, no Email Routing MX on the apex. Mail failure never blocks MCP. API keys and publisher domains stay out of the mail.
 
 ## Still open
 

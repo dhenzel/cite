@@ -8,6 +8,7 @@
 //
 // Connect:  claude mcp add --transport http placement https://mcp.placement.sh/mcp
 import { ADMIN_HTML, signInPage } from './admin-ui.js';
+import { ahrefsScore, trafficBand, trafficPts, TRAFFIC_BANDS } from './ahrefs-metrics.js';
 import {
   homepageText, LLMS_TXT, SERVER_NAME, SERVER_VERSION, serverCard, serverJson,
   productOrigin, isWorkersDev, PRODUCT_HOST, AGENT_TRUST, SHOW_OPERATOR,
@@ -57,7 +58,7 @@ export interface Env {
 // does not blow the agent's context; pass offset to continue.
 const PAGE_DEFAULT = 50;
 const PAGE_MAX = 200;
-const BAND_ORDER = ['<500/mo', '500–1k/mo', '1k–5k/mo', '5k–10k/mo', '10k–50k/mo', '50k–250k/mo', '250k+/mo'];
+const BAND_ORDER = TRAFFIC_BANDS;
 const LINK_ATTRS = ['unknown', 'dofollow', 'sponsored', 'ugc', 'nofollow'];
 const STATUSES = ['active', 'paused', 'burned'];
 
@@ -107,15 +108,6 @@ const operatorSite = (r: Row): Row => {
   return rest;
 };
 const operatorSites = (rows: Row[]): Row[] => rows.map(operatorSite);
-
-const trafficPts = (traffic: unknown): number =>
-  typeof traffic === 'number' ? Math.min(100, 20 * Math.log10(traffic + 1)) : 0;
-
-/** Placement Score: 50% Ahrefs DR + 50% Ahrefs organic traffic (log-scaled). */
-const ahrefsScore = (dr: unknown, traffic: unknown): number => {
-  const d = typeof dr === 'number' ? dr : 0;
-  return Math.max(0, Math.min(100, Math.round(0.5 * d + 0.5 * trafficPts(traffic))));
-};
 
 const scoreComponents = (r: Row) => ({
   authority: typeof r.dr === 'number' ? Math.round(r.dr) : undefined,
@@ -1725,9 +1717,7 @@ async function runAdminTool(env: Env, req: Request, name: string, args: Row): Pr
         ahrefs_organic_value: numArg('organic_value') ?? keep(site.ahrefs_organic_value),
       };
       const score = ahrefsScore(m.dr, m.traffic);
-      const t = m.traffic ?? 0;
-      const band = t < 500 ? '<500/mo' : t < 1_000 ? '500–1k/mo' : t < 5_000 ? '1k–5k/mo'
-        : t < 10_000 ? '5k–10k/mo' : t < 50_000 ? '10k–50k/mo' : t < 250_000 ? '50k–250k/mo' : '250k+/mo';
+      const band = trafficBand(m.traffic ?? 0);
       await env.DB.prepare(`
         UPDATE sites SET dr=?, traffic=?, traffic_band=?, cite_score=?,
                          ahrefs_organic_keywords=?, ahrefs_referring_domains=?, ahrefs_backlinks=?,

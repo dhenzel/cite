@@ -71,6 +71,8 @@ David: "we need a backend where we can administrate the pages we offer… and I 
 
 Result: **exact Ahrefs DR** (labeled, attributed, never renamed) + **bands** for DA and TF/CF + traffic band + decomposed score components. Exact DA/TF/CF/traffic stay in the console.
 
+**Superseded 2026-08-19:** buyer surface is Ahrefs-only. Moz DA and Majestic TF/CF are no longer shown to buyers (not even as bands). See the 2026-08-19 Ahrefs-only decision.
+
 **Access tiers (SPEC §17, revised 2026-08-19).** Looking is unlimited with no account. `register_account({email})` is only so we can take payment. Funded via Stripe Checkout on Shortlist’s existing account (wallet + webhook). After pay, `create_campaign` returns `ready_to_write`; the agent writes via `get_writing_brief` and `submit_placement`. Every call logged to `query_log`.
 
 **Operator MCP (SPEC §16).** `/admin/mcp` exposes the back office as tools for the team — bulk updates dry-run by default. Auth via `ADMIN_TOKEN` header or `/admin/mcp/<token>` for clients that cannot send headers.
@@ -177,11 +179,41 @@ Second: in this booking process the MCP must guide the agent on what to write an
 - New tools: `get_writing_brief` (homepage vs article URL, how to write; domain stays hidden; the Worker does not fetch the buyer URL) and `submit_placement` (screen the post, hold `listed_price`, insert `placement_orders`, ops email with domain).
 - Operator console **Orders** tab lists submitted posts. Allocator / publisher outreach still happens by hand from that queue.
 
+## 2026-08-19 — Ahrefs-only metrics going forward
+
+David: we will only use Ahrefs.
+
+**Decision:** the public metric is **Ahrefs Domain Rating**, attributed, never renamed. Organic traffic stays a **band** (exact Ahrefs traffic uniquely identifies a site). Moz DA and Majestic TrustFlow / CitationFlow are not shown on the buyer MCP and will not be refreshed as ranking inputs.
+
+**Superseded later the same day:** David: we can show all the stats Ahrefs shows. Exact Ahrefs organic traffic (and the rest of the Site Explorer overview) is now buyer-visible. See below.
+
+Fingerprinting consequence of the earlier cut: the combo that reconstructed the catalog was exact DR+DA+TF+CF (93.6%). DR+niche is 2.9%.
+
+Not in the morning cut: D1 still has `da` / `tf` / `cf` from the sheet (operator console can see them). Placement Score still has leftover DA/TF weights until scores are recomputed from Ahrefs-only inputs.
+
+## 2026-08-19 — show every Ahrefs overview stat
+
+David: we can show all the stats Ahrefs shows.
+
+**Decision:** the buyer MCP publishes the Ahrefs Site Explorer overview, using Ahrefs' names, attributed, never renamed:
+
+- Domain Rating
+- organic traffic (**exact**, not a band)
+- organic keywords, referring domains, backlinks, Ahrefs Rank, organic value — when the row has them
+
+`traffic_band` stays as a search convenience. Moz DA and Majestic TF/CF stay off every surface (buyer MCP, operator console, admin MCP).
+
+**Placement Score is Ahrefs-only:** 50% Domain Rating + 50% organic traffic (log-scaled). Moz DA, Majestic TF/CF, and Moz spam are not inputs. Recompute on D1 with `migrations/008_ahrefs_score.sql` at deploy.
+
+What we have in D1 today: DR + organic traffic from the sheet. The extra overview columns are nullable until an Ahrefs refresh fills them. Domain is still hidden from buyers until delivery.
+
+Exact organic traffic uniquely identifies a site in Ahrefs. That is accepted: we are showing the same numbers Ahrefs shows an end user, not a Moz/Majestic fingerprinting combo.
+
 ## Still open
 
 1. **Domain + trademark check for "Cite"** (§13.1) — **closed as a brand**: ship as placement.sh. Cite remains the repo/worker name.
 2. **Finished posts vs. pitches** (§13.5) — **closed 2026-08-18**: finished posts, implemented via `submit_placement`.
-3. **Ahrefs / Moz / Majestic API access** — verify what Shortlist's licences actually include (API vs. UI-only).
+3. **Ahrefs API access** — Moz / Majestic are out going forward. Still verify what Shortlist's Ahrefs licence actually includes (API vs. UI-only).
 4. **Link-attribute backfill** — dofollow/sponsored unknown across 9,453 sites; mandatory field before launch (§12b).
 5. **Build team** — who drives the v1 build (agent-driven by David, Shortlist devs, or a hire).
 6. **Shortlist's own repositioning** — independent open question; not resolved by shipping Cite.

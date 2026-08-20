@@ -53,6 +53,7 @@ const auth = { authorization: 'Bearer test-token-123', 'content-type': 'applicat
 r = await f('/admin/api/sites?q=secret', { headers: auth });
 let d = await r.json();
 assert(d.total === 1 && d.sites[0].domain === 'secret-example.com' && d.sites[0].margin === 60, 'admin list returns private fields + margin');
+assert(!('da' in d.sites[0]) && !('tf' in d.sites[0]) && !('cf' in d.sites[0]), 'admin list omits Moz/Majestic');
 
 // markup edit → listed price recompute (100 × 2.0 = 200)
 r = await f('/admin/api/sites/cs_aaa111bbb222', { method: 'PATCH', headers: auth, body: JSON.stringify({ markup: 2.0 }) });
@@ -138,7 +139,9 @@ console.log('\nall checks passed');
 
 // ---- paid-only inventory, accounts, admin MCP ----
 sq.exec(`
-  UPDATE sites SET dr=88, da=54, tf=40, cf=50, traffic=25000 WHERE id='cs_aaa111bbb222';
+  UPDATE sites SET dr=88, da=54, tf=40, cf=50, traffic=25000,
+    ahrefs_organic_keywords=1800, ahrefs_referring_domains=420, ahrefs_backlinks=12000
+    WHERE id='cs_aaa111bbb222';
   INSERT INTO sites (id, domain, niche, seller_price, markup, listed_price, cite_score, traffic_band, status, link_attribute, acquisition_mode, cost_type, agent_instructions)
   VALUES ('cs_free00self01','free-platform.test','Tech',0,1.6,0,70,'250k+/mo','active','nofollow','self_serve','free','Register and publish directly.'),
          ('cs_exchange0001','swap-site.test','Tech',0,1.6,0,60,'1k-5k/mo','active','dofollow','link_exchange','free',NULL),
@@ -155,10 +158,15 @@ const call = async (tool: string, args: Record<string, unknown> = {}, key?: stri
 // metrics ladder
 let g = await call('get_publisher', { publisher_id: 'cs_aaa111bbb222' });
 assert(g.ahrefs_domain_rating === 88, 'exact Ahrefs DR exposed');
-assert(g.da_band === 'DA 50–59', `DA banded not exact (got ${g.da_band})`);
-assert(g.trust_ratio === 'strong', `TF/CF exposed as a band (got ${g.trust_ratio})`);
-assert(!('da' in g) && !('tf' in g) && !('traffic' in g), 'exact DA/TF/traffic absent from public payload');
+assert(g.ahrefs_organic_traffic === 25000, 'exact Ahrefs organic traffic exposed');
+assert(g.ahrefs?.domain_rating === 88 && g.ahrefs?.organic_traffic === 25000, 'ahrefs overview bundle present');
+assert(g.ahrefs?.organic_keywords === 1800 && g.ahrefs?.referring_domains === 420 && g.ahrefs?.backlinks === 12000,
+  'extra Ahrefs overview stats pass through when present');
+assert(!('da_band' in g) && !('trust_ratio' in g) && !('da' in g) && !('tf' in g) && !('cf' in g),
+  'Moz DA / Majestic TF/CF absent from buyer payload');
+assert(!('traffic' in g) || g.traffic === undefined, 'raw traffic column is not a buyer field');
 assert(typeof g.metrics_attribution === 'string', 'Ahrefs attribution present');
+assert(!g.score_components || !('trust' in g.score_components), 'no Majestic trust on buyer score_components');
 assert(g.placement_score === 88 && !('cite_score' in g) && !('site_id' in g), 'public fields use publisher/placement_score');
 assert(!JSON.stringify(g).includes('secret-example'), 'domain still blind in get_publisher');
 assert(!('cost_type' in g) && !('acquisition_mode' in g), 'buyer payload does not advertise free/self-serve modes');
@@ -253,6 +261,9 @@ assert(r.status === 200 && (await r.json()).result.tools.length === 6, 'admin MC
 
 let ad = await adminCall('admin_search_sites', { q: 'secret' });
 assert(ad.sites[0].domain === 'secret-example.com' && ad.sites[0].seller_price === 80, 'admin MCP returns private fields');
+assert(!('da' in ad.sites[0]) && !('tf' in ad.sites[0]) && !('cf' in ad.sites[0]),
+  'admin MCP does not show Moz DA / Majestic TF/CF');
+assert(ad.sites[0].dr === 88 && ad.sites[0].traffic === 25000, 'admin MCP shows Ahrefs DR and organic traffic');
 ad = await adminCall('admin_update_site', { domain: 'secret-example.com', fields: { markup: 3 } });
 assert(ad.listed_price === 240, `admin_update_site recomputes listed price (got ${ad.listed_price})`);
 ad = await adminCall('admin_update_site', { domain: 'secret-example.com', fields: { evil_column: 1 } });
@@ -263,8 +274,16 @@ ad = await adminCall('admin_bulk_update', { filter: { niche: 'Tech' }, set: { li
 assert(ad.updated === true, 'bulk update applies with confirm');
 const dofollowNow = sq.prepare("SELECT COUNT(*) AS n FROM sites WHERE niche='Tech' AND link_attribute='dofollow'").get() as { n: number };
 assert(dofollowNow.n >= 1, 'bulk update wrote link_attribute');
-ad = await adminCall('admin_update_metrics', { domain: 'secret-example.com', dr: 91, traffic: 500000 });
-assert(ad.cite_score > 0 && ad.traffic_band === '250k+/mo', 'admin_update_metrics recomputes score and band');
+ad = await adminCall('admin_update_metrics', {
+  domain: 'secret-example.com', dr: 91, traffic: 500000,
+  organic_keywords: 9000, referring_domains: 2100, backlinks: 80000, ahrefs_rank: 12000, organic_value: 45000,
+});
+assert(ad.cite_score === 96 && ad.traffic_band === '250k+/mo',
+  `admin_update_metrics uses Ahrefs-only score 50/50 DR+traffic (got ${ad.cite_score})`);
+assert(!ad.metrics || (!('da' in ad.metrics) && !('tf' in ad.metrics) && !('cf' in ad.metrics)),
+  'admin_update_metrics does not return Moz/Majestic');
+g = await call('get_publisher', { publisher_id: 'cs_aaa111bbb222' });
+assert(g.ahrefs?.organic_keywords === 9000 && g.ahrefs?.ahrefs_rank === 12000, 'admin Ahrefs overview refresh reaches the buyer payload');
 ad = await adminCall('admin_add_site', { domain: 'brand-new.test', niche: 'Pets', seller_price: 40, markup: 2.5 });
 assert(ad.added === true && ad.listed_price === 100, 'admin_add_site computes listed price');
 ad = await adminCall('admin_analytics', {});

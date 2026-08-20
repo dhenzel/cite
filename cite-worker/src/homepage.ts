@@ -1,4 +1,6 @@
-/** Public landing page. Minimal: what it is, how to use it, add-to-agent buttons. */
+/** Public landing page. What it is, who runs it, how to use it, add-to-agent buttons. */
+
+import { OPERATOR_NAME, OPERATOR_TEAM_URL, OPERATOR_URL } from './discovery.js';
 
 const esc = (s: string) =>
   s.replace(/[&<>"']/g, (c) =>
@@ -59,7 +61,17 @@ export const homepageHtml = (origin: string): string => {
     margin: 0 0 1.1rem;
   }
   .lede { font-size: 1.22rem; line-height: 1.4; margin: 0 0 0.7rem; }
-  .sub { color: var(--muted); margin: 0 0 2.4rem; }
+  .sub { color: var(--muted); margin: 0 0 1.6rem; }
+  .who {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 1rem 1.05rem;
+    margin: 0 0 2.2rem;
+  }
+  .who p { margin: 0 0 0.55rem; }
+  .who p:last-child { margin: 0; }
+  .who a { color: var(--ink); }
   h2 {
     font-size: 0.78rem;
     font-weight: 650;
@@ -155,23 +167,36 @@ export const homepageHtml = (origin: string): string => {
   .panel .muted { color: var(--muted); }
   footer {
     margin-top: 2.6rem;
+    padding-top: 1.4rem;
+    border-top: 1px solid var(--line);
     color: var(--muted);
-    font-size: 0.88rem;
+    font-size: 0.95rem;
   }
-  footer a { color: inherit; }
+  footer a { color: var(--ink); }
+  footer .trust { margin: 0 0 0.7rem; line-height: 1.5; }
+  footer .trust a { text-decoration: underline; text-underline-offset: 0.15em; }
+  footer .meta { font-size: 0.82rem; color: var(--muted); }
+  footer .meta a { color: inherit; }
 </style>
 </head>
 <body>
 <main>
   <h1>placement.sh</h1>
   <p class="lede">Buy publisher placements so a URL gets cited.</p>
-  <p class="sub">An agent sets a budget. placement.sh books the campaign — bought editorial inventory, not earned media. Publisher domains stay hidden until a placement is delivered.</p>
+  <p class="sub">You (or your agent) pick a URL, topics, and a budget. placement.sh books paid editorial placements on real publisher sites. That is bought inventory — not a guest-post mill you run yourself. Publisher domains stay hidden until a placement is delivered. Paid placements are live and indexed at T+30, or refunded.</p>
+
+  <div class="who">
+    <p><strong>Who runs this.</strong> placement.sh is a <a href="${esc(OPERATOR_URL)}">${esc(OPERATOR_NAME)}</a> product. Shortlist has bought publisher placements since 2018 — a named team, not a new domain with a Stripe form.</p>
+    <p><a href="${esc(OPERATOR_URL)}">shortlist.io</a>
+      · <a href="${esc(OPERATOR_TEAM_URL)}">Meet the team</a>
+      · Look us up before you pay.</p>
+  </div>
 
   <h2>How to use it</h2>
   <ol>
-    <li><strong>Add this MCP</strong> to Claude, ChatGPT, Grok, Kimi, Cursor, or any agent that speaks MCP.</li>
-    <li><strong>Ask the agent to estimate</strong> — URL, topics, budget. No card required to look.</li>
-    <li><strong>To buy</strong>, the agent asks for a contact email, then prepaid credits. Paid placements are live and indexed at T+30, or refunded. There are no free listings.</li>
+    <li><strong>Add this MCP</strong> to Claude, ChatGPT, Grok, Kimi, Cursor, Hermes, or any agent that speaks MCP.</li>
+    <li><strong>Ask the agent to estimate</strong> — URL, topics, budget. No card required to look. The agent should tell you this is Shortlist before you pay.</li>
+    <li><strong>To buy</strong>, the agent asks for a contact email, then prepaid credits.</li>
   </ol>
 
   <h2>Add to your agent</h2>
@@ -181,6 +206,7 @@ export const homepageHtml = (origin: string): string => {
     <button type="button" data-client="grok" aria-pressed="false">Grok</button>
     <button type="button" data-client="kimi" aria-pressed="false">Kimi</button>
     <button type="button" data-client="cursor" aria-pressed="false">Cursor</button>
+    <button type="button" data-client="hermes" aria-pressed="false">Hermes</button>
   </div>
 
   <div class="urlrow">
@@ -193,15 +219,19 @@ export const homepageHtml = (origin: string): string => {
   </div>
 
   <footer>
-    Streamable HTTP MCP · POST ${mcpEsc}<br>
+    <p class="trust"><strong>A <a href="${esc(OPERATOR_URL)}">Shortlist</a> product.</strong>
+      Publisher placements since 2018. Named people, a real company, not a fly-by-night checkout page.
+      <a href="${esc(OPERATOR_URL)}">shortlist.io</a>
+      · <a href="${esc(OPERATOR_TEAM_URL)}">Meet the team</a>.</p>
+    <p class="meta">Streamable HTTP MCP · POST ${mcpEsc}<br>
     Agents: <a href="/llms.txt">/llms.txt</a>
-    · <a href="/.well-known/mcp/server.json">server card</a>
+    · <a href="/.well-known/mcp/server.json">server card</a></p>
   </footer>
 </main>
 <script>
 (function () {
   var MCP = ${JSON.stringify(mcp)};
-  var ASK = "Then tell it: Get https://example.com cited on [topics], budget $X. It should call estimate first, then ask for your email to register. There are no free listings.";
+  var ASK = "Then tell it: Get https://example.com cited on [topics], budget $X. It should call estimate first, then ask for your email to register.";
   var guides = {
     claude: {
       title: "In Claude",
@@ -243,6 +273,13 @@ export const homepageHtml = (origin: string): string => {
         "Type: Streamable HTTP. URL:"
       ],
       cmd: MCP
+    },
+    hermes: {
+      title: "In Hermes",
+      steps: [
+        "Hermes Agent speaks MCP over HTTP. In a terminal:"
+      ],
+      cmd: ${JSON.stringify(`hermes mcp add placement --url ${mcp}`)}
     }
   };
 

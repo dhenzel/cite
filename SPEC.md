@@ -2,7 +2,7 @@
 
 **Public brand:** placement.sh. Buyer-facing APIs say **publisher** / **Placement Score**, never Cite / site.
 **Status:** build-ready spec, v1. Settled with David Henzel on 2026-08-12; decisions updated 2026-08-13 (see `DECISIONS.md`).
-**Owner:** shortlist.io (quiet). Historical sections below still say “Cite”; that was the working name.
+**Owner:** shortlist.io. Human website names Shortlist in the footer (trust). Agent MCP copy stays quiet. Historical sections below still say “Cite”; that was the working name.
 **Purpose of this document:** open it in Claude Code and start building with no other context.
 
 D1 tables stay `sites` so live inventory does not migrate. Cloudflare Worker script name stays `cite-mcp`. Neither name is shown to buyers or in Connect URLs.
@@ -275,25 +275,23 @@ The gap that remains — and that Cite must own: CrowdReply's writes sit **behin
 3. ~~Masked vs. open domains on the free tier~~ — **SETTLED 2026-08-15: blind placements — domains hidden at every tier until the link is delivered** (§11).
 4. ~~Who staffs the outreach inbox~~ — **SETTLED 2026-08-13: existing Shortlist team** (§8).
 5. **Finished posts vs. pitches** — currently finished posts; David flagged this as revisitable. *(Still open.)*
-6. ~~Branding — separate brand vs. Shortlist sub-product~~ — **SETTLED 2026-08-13: separate brand, quiet ownership confirmed** (§14).
+6. ~~Branding — separate brand vs. Shortlist sub-product~~ — **SETTLED 2026-08-13: separate brand.** Human site + buyer MCP name Shortlist for trust (2026-08-19, §14).
 
 ---
 
-## 14. Branding: separate brand, quiet ownership
+## 14. Branding: separate product, named operator on the human site
 
-**Recommendation: launch Cite as a separate brand with quiet Shortlist ownership.** *(Confirmed 2026-08-13.)*
+**Launch as placement.sh, not as a Shortlist sub-brand.** *(Confirmed 2026-08-13.)* Agent-facing infrastructure and a human agency stay different motions.
 
-**The deciding argument is concealment.** If the agent-facing product loudly markets "programmatic link placement at scale" under the Shortlist name, the publishers Shortlist emails can connect the two **in one search**. The marketing copy that sells Cite to agents is precisely the copy that burns Shortlist's publisher relationships. That is not a brand-preference argument, it is an operational one, and it decides the question.
+**Human website and buyer MCP name the operator.** *(2026-08-18, expanded 2026-08-19.)* People pay real money. A domain with no company reads as a fly-by-night. placement.sh HTML explains that Shortlist has bought publisher placements since 2018, with links to [shortlist.io](https://shortlist.io/) and [the team](https://shortlist.io/about-us/). Claude/MCP `help` and the payment `next_step` tell the agent to show those same links before the human pays.
 
-**Secondary arguments for separation:**
-- Agent-facing infrastructure and a human agency are **different buyers, different motions, different pricing**. Infrastructure is self-serve, usage-priced, developer-marketed; an agency is relationship-sold and retainer-priced.
-- A separate brand is **independently sellable**. Cite with its own allocator and lift dataset is an acquirable asset; a Shortlist product line is not.
+**Publisher-facing copy stays quiet about the product.** Outreach is still Shortlist humans, never From placement.sh (§8). Inventory stays blind until delivery (§11). Do not market “programmatic placements at scale” at publishers.
 
-**The counter-argument, stated fairly:** Shortlist has existing trust, an aged domain with real authority, and a customer list — launching under it is faster, cheaper, and starts with credibility instead of a cold start. That is genuinely true. It is also outweighed, because the thing it buys (speed) is recoverable and the thing it risks (the publisher inventory) is not.
+**Buyer mail From `@shortlist.io`.** Do not send buyer transactional mail from `hello@placement.sh` in v1.
 
-**Recommendation: do NOT put "a Shortlist company" in the footer** while publisher concealment is the operating model. Quiet ownership means quiet.
+The 2026-08-13 “do NOT put Shortlist in the footer” line is superseded. Concealment of *inventory* is unchanged. The paying human is told who operates placement.sh.
 
-Note (2026-08-13): Cite is **not** Shortlist's repositioning — it is a separate project that feeds demand into Shortlist's publisher inventory. Shortlist's own positioning remains an open, independent question.
+Note (2026-08-13): placement.sh is **not** Shortlist's repositioning — it is a separate project that feeds demand into Shortlist's publisher inventory. Shortlist's own positioning remains an open, independent question.
 
 ---
 
@@ -362,15 +360,15 @@ The public tools (`estimate`, `search_publishers`, `get_publisher`, `inventory_s
 
 ### Access tiers
 
-Looking is still free (no card). Buying is not.
+Looking is free and **unlimited**. Buying is not. No result cap, no account required to search.
 
-| tier | how you get it | result cap | what you can do |
+| tier | how you get it | looking | what you can do |
 |---|---|---|---|
-| anonymous | nothing | 10 per search | search, inspect, estimate |
-| registered | `register_account({email})` — agent asks the human; do not invent an email | 50 per search | same, plus a key for later calls |
-| funded | prepaid Stripe credits | 50 | + `create_campaign` / submit |
+| anyone | nothing | unlimited (page with `offset`) | search, inspect, estimate — figure out what to write |
+| registered | `register_account({email})` — agent asks the human; do not invent an email | unlimited | same, plus a key so we can take payment |
+| funded | prepaid Stripe credits | unlimited | + `create_campaign` / submit |
 
-The ladder is still frictionless at the point an agent wants to buy: the agent asks the human for an email, creates the account, then follows `next_step` on `INSUFFICIENT_CREDIT`. Every call is written to `query_log`.
+The agent should let the human browse until they know what they want. Email and credits only when they submit. On `INSUFFICIENT_CREDIT`, follow `next_step`. Every call is written to `query_log`.
 
 ### Operator MCP
 

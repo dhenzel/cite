@@ -227,7 +227,7 @@ David: if somebody opens Checkout and does not pull through, we want that visibl
 
 David: the placement.sh homepage should use the Shortlist-colored dot between “placement” and “sh”, and Who runs this should mainly send people to the team page, plus the same Book a call Calendly Shortlist uses on shortlist.io.
 
-**Decision:** wordmark is `placement.sh` with the period in Shortlist mint (`#30D2AD`). Who runs this leads with [the team](https://shortlist.io/about-us/), then a plain link to [Book a 15-min call](https://calendly.com/shortlist-businessdevelopment/15min) (the homepage widget URL, not an embedded popup), then shortlist.io. No auto-book, no Calendly embed. Inter + navy ink so the mint period reads as Shortlist, not a generic teal.
+**Decision:** wordmark is `placement.sh` with the period in Shortlist mint (`#30D2AD`). Who runs this leads with [the team](https://shortlist.io/about-us/), then a plain link to [Book a 15-min call](https://calendly.com/shortlist-businessdevelopment/15min) (the homepage widget URL, not an embedded popup), then shortlist.io. The same three links go out over MCP (`help.who_runs_this`, initialize instructions, booking `next_step`) so the agent can offer a call in the chat — optional, not required to pay. No auto-book, no Calendly embed. Inter + navy ink so the mint period reads as Shortlist, not a generic teal.
 
 ## Still open
 

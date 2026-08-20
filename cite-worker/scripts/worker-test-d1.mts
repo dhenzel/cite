@@ -124,7 +124,7 @@ r = await f('/llms.txt');
 {
   const llms = await r.text();
   assert(r.status === 200 && llms.includes('placement.sh'), 'llms.txt served for agents');
-  assert(/shortlist\.io/i.test(llms) && /about-us/i.test(llms), 'agent docs name Shortlist so the human can look us up before paying');
+  assert(/shortlist\.io/i.test(llms) && /about-us/i.test(llms) && /calendly\.com/i.test(llms), 'agent docs name Shortlist and offer a call so the human can look us up before paying');
 }
 r = await f('/.well-known/mcp/server.json');
 {
@@ -259,14 +259,14 @@ assert(h.call_first === 'estimate' && h.product === 'placement.sh', 'help orient
 assert(Array.isArray(h.never) && h.never.some((x: string) => /free listing/i.test(x)), 'help forbids offering free listings');
 assert(h.playbook.some((x: string) => /email/i.test(x)), 'help says to ask the human for an email');
 assert(h.playbook.some((x: string) => /unlimited/i.test(x)), 'help says looking is unlimited');
-assert(h.who_runs_this?.operator === 'Shortlist' && /shortlist\.io\/about-us/.test(h.who_runs_this.team), 'help names Shortlist and the team page');
-assert(h.playbook.some((x: string) => /look us up/i.test(x)), 'help tells the agent to show Shortlist before the human pays');
+assert(h.who_runs_this?.operator === 'Shortlist' && /shortlist\.io\/about-us/.test(h.who_runs_this.team) && /calendly\.com/.test(h.who_runs_this.book_a_call), 'help names Shortlist, the team page, and a 15-min call');
+assert(h.playbook.some((x: string) => /look us up/i.test(x) && /calendly/i.test(x)), 'help tells the agent to show Shortlist and offer a call before the human pays');
 
 let camp = await call('create_campaign', { target_url: 'https://buyer.test', topics: ['finance'], budget: 4000 });
 assert(camp.error === 'ACCOUNT_REQUIRED' && /email/i.test(camp.next_step), 'booking without an account asks for email, not a free listing');
 camp = await call('create_campaign', { target_url: 'https://buyer.test', topics: ['finance'], budget: 4000 }, apiKey);
 assert(camp.error === 'INSUFFICIENT_CREDIT' && /do not offer/i.test(camp.next_step), 'INSUFFICIENT_CREDIT forbids a free-listing substitute');
-assert(/shortlist\.io/i.test(camp.next_step) && /about-us/i.test(camp.next_step), 'payment step tells the agent to show Shortlist before the human pays');
+assert(/shortlist\.io/i.test(camp.next_step) && /about-us/i.test(camp.next_step) && /calendly\.com/i.test(camp.next_step), 'payment step tells the agent to show Shortlist and offer a call before the human pays');
 
 let est = await call('estimate', { topics: ['finance'], budget: 4000, target_url: 'https://buyer.test/pricing' });
 assert(est.target_url === 'https://buyer.test/pricing' && Array.isArray(est.plan), 'estimate accepts target_url');
@@ -754,7 +754,7 @@ console.log('\nall admin-key checks passed');
   const ops = decoded.find((m) => /To: ops@shortlist\.io/.test(m));
   const inbox = decoded.find((m) => /To: placement@shortlist\.io/.test(m));
   assert(!!welcome && !!ops && !!inbox, 'welcome to the buyer; ops ping to placement@shortlist.io and CITE_ADMIN_EMAILS');
-  assert(welcome!.includes('shortlist.io/about-us') && welcome!.includes('Shortlist'), 'welcome names Shortlist and the team page');
+  assert(welcome!.includes('shortlist.io/about-us') && welcome!.includes('Shortlist') && welcome!.includes('calendly.com'), 'welcome names Shortlist, the team page, and a 15-min call');
   assert(welcome!.includes('claude mcp add') && welcome!.includes('hermes mcp add'), 'welcome shows how to add the MCP');
   assert(!welcome!.includes(minted.api_key) && !ops!.includes(minted.api_key), 'mail never includes the API key');
   assert(!/free listing|secret-example|hidden-blog/i.test(decoded.join('\n')), 'mail never mentions free listings or publisher domains');
@@ -818,7 +818,7 @@ console.log('\nall admin-key checks passed');
   assert(!pay.checkout_url, 'no checkout_url when Stripe is missing');
   camp = await call('create_campaign', { target_url: 'https://buyer.test', topics: ['finance'], budget: 4000 }, apiKey);
   assert(camp.error === 'INSUFFICIENT_CREDIT' && /do not offer/i.test(camp.next_step), 'INSUFFICIENT_CREDIT without Stripe still forbids a free listing');
-  assert(/shortlist\.io/i.test(camp.next_step) && /about-us/i.test(camp.next_step), 'payment step still names Shortlist');
+  assert(/shortlist\.io/i.test(camp.next_step) && /about-us/i.test(camp.next_step) && /calendly\.com/i.test(camp.next_step), 'payment step still names Shortlist and offers a call');
 
   const stripeCalls: { url: string; body: string; headers: Record<string, string> }[] = [];
   let stripeSeq = 0;
@@ -866,7 +866,7 @@ console.log('\nall admin-key checks passed');
   assert(checkout.amount_usd === 60, 'amount 60 is charged exactly — no pack snap');
   assert(checkout.amount_cents === 6000, 'exact charge is 6000 cents');
   assert(checkout.session_id === 'cs_test_1', 'session id from Stripe');
-  assert(/shortlist\.io\/about-us/.test(checkout.next_step), 'Checkout next_step names the team page');
+  assert(/shortlist\.io\/about-us/.test(checkout.next_step) && /calendly\.com/.test(checkout.next_step), 'Checkout next_step names the team page and a 15-min call');
   assert(stripeCalls[0].body.includes('metadata%5Bproduct%5D=placement.sh') || stripeCalls[0].body.includes('metadata[product]=placement.sh'),
     'Checkout Session is tagged product=placement.sh');
 
@@ -883,7 +883,7 @@ console.log('\nall admin-key checks passed');
   const unpaidCamp = await parsePay(pr);
   assert(unpaidCamp.error === 'INSUFFICIENT_CREDIT' && unpaidCamp.checkout_url?.startsWith('https://checkout.stripe.com/'),
     'create_campaign includes a Checkout URL when Stripe is configured');
-  assert(/shortlist\.io\/about-us/.test(unpaidCamp.next_step), 'funded-path Checkout still names Shortlist');
+  assert(/shortlist\.io\/about-us/.test(unpaidCamp.next_step) && /calendly\.com/.test(unpaidCamp.next_step), 'funded-path Checkout still names Shortlist and offers a call');
 
   const event = {
     type: 'checkout.session.completed',

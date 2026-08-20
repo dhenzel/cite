@@ -247,6 +247,22 @@ David: the site description must not leak which publisher it is via MCP.
 
 **Decision:** `search_publishers` / `get_publisher` / `get_writing_brief` re-scrub every public text field at read time and drop the field if a domain or registered-name token remains. Exact `recent_post_titles` stay off the buyer MCP (they google the masthead). Writing-brief `example_angles` come from topics, not quoted headlines. `summary_private` stays operator-only.
 
+## 2026-08-20 — paid and free inventory are two sections of the console
+
+David: separate the inventory of paid sites and the free sites I found — these are two different sections in the backend.
+
+**Decision:** `sites.cost_type` is the split, and `/admin` shows it as two tabs: **Paid inventory** and **Free inventory**. The tab is the filter (`/admin/api/sites` always sends `cost_type`), so the old *paid + free* dropdown is gone and a free publisher can never turn up in the paid table.
+
+- Paid keeps the money columns — seller $, markup, listed $, margin.
+- Free drops all four (they were four dashes per row) and shows what an operator actually needs: **how to get in** (`acquisition_mode`), whether the publisher **wants a link back** (`requires_reciprocal_link`), and the **submission instructions** (`agent_instructions`), all editable inline.
+- A **Section** control on every row patches `cost_type` — that is how a site moves between the two.
+- Free sites are added from the free tab and stored **without a seller price**, so nothing computes a listed price for them and `buyerWhere` keeps them off the buyer MCP. Free inventory stays operator-only; nothing about this changes the 2026-08-18 "paid inventory only, no free listings" decision on the public MCP.
+- Header counts split too (`paid_sites` / `free_sites`), and the money stats — priced, avg markup, avg margin, link-attr unknown — now count paid rows only. New: a `paid, unpriced` warning, because those rows are invisible to buyers.
+
+Live today: **8,968 paid** (8,820 `paid_placement` + 148 `unavailable`) and **499 free** (378 `apply_editorial`, 80 `link_exchange`, 22 `self_serve`, 19 `unavailable`).
+
+Next on the free side (not built): researching more free publishers and filling in `agent_instructions` for the 470-odd rows that have none.
+
 ## Still open
 
 1. **Domain + trademark check for "Cite"** (§13.1) — **closed as a brand**: ship as placement.sh. Cite remains the repo/worker name.

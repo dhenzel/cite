@@ -206,7 +206,7 @@ This is enough to write a fitting post without knowing the domain.
 
 Admin MCP: `admin_enrich_sites({limit, min_score, status})` dry-run count, then `confirm:true`. Console: Enrichment tab showing coverage % and failures.
 
-**Do not** put xAI keys in the public Worker if the public Worker is reachable from the internet without admin auth — run enrich as a one-shot script (`cite-mcp/src/enrich.ts`) that writes to D1 via `wrangler d1 execute` or an admin-only Worker route.
+**Do not** put xAI keys in the public Worker if the public Worker is reachable from the internet without admin auth — run enrich as a one-shot script (`cite-worker/scripts/enrich-content.mts`) that writes to D1 via `wrangler d1 execute` or an admin-only Worker route. Cursor Grok (the chat model) is not an `XAI_API_KEY`; store the API key as a Cloud Agent Runtime Secret if you want unattended `--llm`. In-chat profiles go through `scripts/apply-llm-profiles.mts`.
 
 ---
 

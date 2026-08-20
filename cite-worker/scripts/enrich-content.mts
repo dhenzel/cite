@@ -1,5 +1,7 @@
 #!/usr/bin/env npx tsx
-// Crawl-first publisher enrichment. Optional Grok pass when XAI_API_KEY is set.
+// Crawl-first publisher enrichment. Optional Grok pass when XAI_API_KEY is set
+// (xAI API console — not the Cursor Grok model, not SuperGrok). For Cursor-chat
+// profiles use apply-llm-profiles.mts.
 // Does not run inside the public Worker. Writes JSONL (gitignored).
 //
 //   npx tsx scripts/enrich-content.mts --sites data/paid-sites.json --out data/enrich.jsonl

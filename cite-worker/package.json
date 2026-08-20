@@ -9,6 +9,7 @@
     "test": "tsx scripts/enrich-extract-test.mts && tsx scripts/worker-test-d1.mts",
     "test:enrich": "tsx scripts/enrich-extract-test.mts",
     "enrich": "tsx scripts/enrich-content.mts",
+    "enrich:apply-llm": "tsx scripts/apply-llm-profiles.mts",
     "test:console": "tsx scripts/console-browser-test.mjs"
   },
   "devDependencies": {

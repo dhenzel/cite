@@ -64,4 +64,19 @@ assert(profile && !/secretexample/i.test(profile.audience), 'LLM audience is scr
 assert.equal(profile?.typical_length_words, 900);
 assert.equal(parseLlmProfile('not json', domain), null, 'rejects garbage');
 
+{
+  const ok = parseLlmProfile(JSON.stringify({
+    audience: 'Operators.',
+    topics: ['payroll', 'invoicing', 'cash flow', 'close'],
+    tone: 'practitioner',
+    typical_length_words: 900,
+    post_shape: 'how-to',
+    do: 'Include an example.',
+    dont: 'No crypto.',
+    summary_private: 'Internal.',
+    summary_public: 'A finance publication for operators covering payroll and close.',
+  }), 'other.com');
+  assert(ok && ok.topics.includes('payroll'), 'apply-llm uses the same Grok JSON shape');
+}
+
 console.log('ok: enrich extractors');

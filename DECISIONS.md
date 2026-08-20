@@ -237,6 +237,7 @@ David: enrich publishers with what they write about and recent posts so an agent
 
 - Script: `cite-worker/scripts/enrich-content.mts` (open egress, not the public Worker). Homepage + RSS, honour `Disallow: /`, brand-scrub public fields.
 - `--llm` calls xAI (`grok-4-fast` by default) with `enrich_prompt_v1` when `XAI_API_KEY` is set. Without a key, store crawl-only `summary` / `writes_about` / `recent_titles` (`source=crawl-v1`) so briefs improve immediately.
+- **Cursor Grok ≠ xAI API.** Selecting Grok in Cursor (including this cloud agent) uses the Cursor plan. It does not inject `XAI_API_KEY`. SuperGrok / grok.com is not API access either. Unattended `--llm` needs a key from [console.x.ai](https://console.x.ai/) stored as a Cursor Cloud Agent Runtime Secret named `XAI_API_KEY`. Profiles written in this chat are applied with `scripts/apply-llm-profiles.mts`.
 - D1 migration `009_enrich_profile.sql` adds audience / tone / post_shape / typical_length_words / do_fit / dont_fit / summary_private / enrich_status. `summary_private` is operator-only.
 - Highest `cite_score` first. Resume skips `enrich_status=ok`. Ahrefs ranking keywords stay a second pass.
 
@@ -249,4 +250,4 @@ David: enrich publishers with what they write about and recent posts so an agent
 5. **Build team** — who drives the v1 build (agent-driven by David, Shortlist devs, or a hire).
 6. **Shortlist's own repositioning** — independent open question; not resolved by shipping Cite.
 7. **Which Shortlist mailbox / named sender** owns v1 Gmail drafts — **deferred.** Orders stay in `/admin`; operators copy and send by hand. Revisit drafts / Context Engine writes after that loop is in use.
-8. **xAI vs other LLM** for enrichment if Grok API access is awkward — prompt and JSON shape stay; the vendor is swappable.
+8. **xAI vs other LLM** — prompt and JSON shape stay; the vendor is swappable. Cursor Grok can write profiles in-chat; the 8k batch still wants an xAI API key.

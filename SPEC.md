@@ -395,3 +395,37 @@ The console (§16) is also exposed as an MCP server at `/admin/mcp`, guarded by 
 **Caching.** Engine reads are cached ~60s per person and tool (tool lists ~5 min), so a render is not a burst of live calls in the engine's audit log.
 
 **The shared `ADMIN_TOKEN` no longer opens the web console.** It remains solely for `/admin/mcp`, because an agent cannot complete a browser sign-in.
+
+## 19. Free placement opportunities (the second product line)
+
+*Added 2026-08-20.* placement.sh sells paid publisher placements (§1–§17). This section specifies the free half: **helping a customer get their own site placed and visible**, with the agent doing the matching and the preparation and a human doing the parts only a human can do.
+
+**Commercial model: free forever.** No account, no card, no credits, no quota. It is the way in; the paid product is the upsell once free options are exhausted. An agent must say plainly that paid is a different mechanism — bought inventory, not a free listing.
+
+**One catalog, three contribution types.** `opportunities` holds everything free. `contribution` says what the customer contributes:
+
+- `article` — they write a post (guest-post blogs, self-publish platforms). These are the 499 rows migrated out of `sites`.
+- `profile` — their company gets listed (directories, marketplaces, review platforms).
+- `program` — they apply to join (partner ecosystems, awards, accelerators).
+
+`sites` is paid publishers only from migration 010 onward.
+
+**Identity without accounts.** `analyze_site` mints an unguessable `company_id` and a `workspace_key`. Holding the `company_id` is what authorises reading and writing that company's work. Email is optional; the paid account system is untouched.
+
+**Hard gates before scoring.** Every opportunity carries its eligibility gates as real columns. Matching applies exclusions first and only then scores. A gate that cannot be satisfied suppresses the row **with a reason**; a gate whose answer is *unknown* also suppresses it, but surfaces the question so the agent can ask the human and re-run. Score is eligibility + audience fit + confidence − effort and risk, and the working is returned as `why_fit`.
+
+**Credentials are never inferred.** Licences, certifications and memberships stay `unknown` until a human states them (`stated`). A homepage cannot establish them, and a guess becomes a false claim on a real application.
+
+**Preparation is not submission.** `prepare_submission` returns the spec — exact fields, copy lengths, assets, missing inputs, human checkpoints — and the calling agent writes the copy from evidence. The human logs in, passes the CAPTCHA, approves, and submits. The agent must search for an existing listing first and claim or improve it rather than duplicate.
+
+**Confidence is part of the payload.** The catalog is a discovery corpus:
+
+- cost is unverified on ~53% of it, and only `is_free_confirmed` rows may be described as free;
+- `needs_reverification` is set on 842 of 843 imported rows, because the requirements came from a class template rather than that platform's live form;
+- `link_attribute_claim` is a claim until `check_listing_status` fetches the live listing and records the `rel` it actually renders.
+
+Nothing on this surface may promise approval, indexing, traffic, or a dofollow link.
+
+**Verification is operator work.** Only an operator, having opened the live page, may clear `needs_reverification` — from the console **Opportunities** tab. Nothing automatic may mark a row verified.
+
+**Submission state.** `submissions` is idempotent on company + opportunity: `matched → prepared → submitted → pending → live | rejected | skipped | needs_human`, with an append-only event log. `needs_human` is the operator queue.

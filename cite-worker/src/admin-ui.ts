@@ -134,6 +134,8 @@ export const ADMIN_HTML = `<!doctype html>
   .pill.paused { background:rgba(196,138,18,.12); color:var(--warn); }
   .pill.burned { background:rgba(192,69,58,.12); color:var(--bad); }
   .pill.unknown { background:rgba(110,122,164,.12); color:var(--muted); }
+  .pill.ok { background:rgba(48,210,173,.16); color:var(--good); }
+  .pill.warn { background:rgba(196,138,18,.12); color:var(--warn); }
   .pill.open { background:rgba(48,210,173,.16); color:var(--good); }
   .pill.follow { background:rgba(196,138,18,.12); color:var(--warn); }
   .pill.expired { background:rgba(192,69,58,.12); color:var(--bad); }
@@ -233,7 +235,8 @@ export const ADMIN_HTML = `<!doctype html>
 <div id="app" class="wrap">
   <div class="tabs">
     <button id="tab-inv" class="tab active" onclick="showTab('inv')">Paid inventory</button>
-    <button id="tab-free" class="tab" onclick="showTab('free')">Free inventory</button>
+    <button id="tab-opp" class="tab" onclick="showTab('opp')">Opportunities</button>
+    <button id="tab-sub" class="tab" onclick="showTab('sub')">Submissions</button>
     <button id="tab-ord" class="tab" onclick="showTab('ord')">Orders</button>
     <button id="tab-fol" class="tab" onclick="showTab('fol')">Follow-up</button>
     <button id="tab-ana" class="tab" onclick="showTab('ana')">Analytics</button>
@@ -289,54 +292,62 @@ export const ADMIN_HTML = `<!doctype html>
   </div>
   </div>
 
-  <div id="pane-free" style="display:none">
+  <div id="pane-opp" style="display:none">
   <div class="bar">
-    <input id="q_free" placeholder="search domain / niche / note…" style="flex:1;min-width:220px">
-    <select id="fniche_free"><option value="">all niches</option></select>
-    <select id="fstatus_free"><option value="">all statuses</option><option>active</option><option>paused</option><option>burned</option></select>
-    <select id="fmode_free"><option value="">all modes</option><option value="paid_placement">paid_placement</option><option value="self_serve">self_serve</option><option value="apply_editorial">apply_editorial</option><option value="link_exchange">link_exchange</option><option value="unavailable">unavailable</option></select>
-    <button class="primary" onclick="load('free',1)">Search</button>
+    <input id="q_opp" placeholder="search platform / type / niche…" style="flex:1;min-width:220px">
+    <select id="f_contribution">
+      <option value="">all kinds</option>
+      <option value="profile">profile — they get listed</option>
+      <option value="article">article — they write a post</option>
+      <option value="program">program — they apply to join</option>
+    </select>
+    <select id="f_opp_status"><option value="active">active</option><option value="watchlist">watchlist</option><option value="retired">retired</option><option value="">all</option></select>
+    <select id="f_cost"><option value="">any cost</option><option value="free">confirmed free</option><option value="unknown">cost unknown</option></select>
+    <select id="f_verify"><option value="">any confidence</option><option value="needs">needs re-verification</option><option value="done">verified</option></select>
+    <button class="primary" onclick="loadOpps(1)">Search</button>
   </div>
-  <p class="hint">Publishers that cost nothing to place on — apply, self-publish, or swap a link. Never sold on the buyer MCP and never priced: what matters here is <b>how you get in</b>, not what it costs.</p>
-  <details>
-    <summary>+ Add free site</summary>
-    <div class="addform">
-      <input id="fa_domain" placeholder="domain.com">
-      <input id="fa_niche" placeholder="niche">
-      <select id="fa_mode">
-        <option value="apply_editorial">apply_editorial</option>
-        <option value="self_serve">self_serve</option>
-        <option value="link_exchange">link_exchange</option>
-        <option value="unavailable">unavailable</option>
-      </select>
-      <input id="fa_instructions" placeholder="how to publish (submission URL, who to pitch…)" style="flex:1;min-width:240px">
-      <label class="reciprocal"><input id="fa_recip" type="checkbox"> wants a link back</label>
-      <button class="primary" onclick="addFreeSite()">Add</button>
-    </div>
-  </details>
+  <p class="hint">Places a <b>customer</b> gets listed, profiled or published for free — this is the other product, not inventory we sell.
+  Cost is unverified on about half of these and almost every requirement came from a class template, so
+  <b>Verify</b> is the real work here: open the live page, confirm cost and requirements, then stamp it.</p>
   <div style="overflow-x:auto">
   <table>
     <thead><tr>
-      <th class="sort" data-sort="domain" title="Click to sort">Domain</th>
+      <th class="sort" data-sort="platform" title="Click to sort">Platform</th>
+      <th class="sort" data-sort="contribution" title="Click to sort">Kind</th>
+      <th class="sort" data-sort="opportunity_type" title="Click to sort">Type</th>
       <th class="sort" data-sort="niche" title="Click to sort">Niche</th>
-      <th class="num sort" data-sort="cite_score" title="Click to sort">Score</th>
-      <th class="num sort" data-sort="dr" title="Click to sort">DR</th>
-      <th class="num sort" data-sort="traffic" title="Click to sort">Org traffic</th>
-      <th class="sort" data-sort="acquisition_mode" title="Click to sort">How to get in</th>
-      <th>Link back?</th>
-      <th class="sort" data-sort="link_attribute" title="Click to sort">Link attr</th>
-      <th>Instructions</th>
+      <th class="sort" data-sort="cost_model" title="Click to sort">Cost</th>
+      <th title="What the source claimed — not verified">Link claim</th>
+      <th class="num sort" data-sort="priority_score" title="Click to sort">Score</th>
+      <th class="num sort" data-sort="prep_minutes" title="Click to sort">Prep</th>
+      <th class="sort" data-sort="verification_level" title="Click to sort">Confidence</th>
       <th class="sort" data-sort="status" title="Click to sort">Status</th>
-      <th title="Move this publisher to the other section">Section</th>
+      <th title="Confirm the live page, then stamp it verified">Verify</th>
     </tr></thead>
-    <tbody id="rows_free"></tbody>
+    <tbody id="rows_opp"></tbody>
   </table>
   </div>
   <div class="pager">
-    <button onclick="load('free',VIEWS.free.page-1)">‹ prev</button>
-    <span id="pageinfo_free"></span>
-    <button onclick="load('free',VIEWS.free.page+1)">next ›</button>
+    <button onclick="loadOpps(OPPS.page-1)">‹ prev</button>
+    <span id="pageinfo_opp"></span>
+    <button onclick="loadOpps(OPPS.page+1)">next ›</button>
   </div>
+  </div>
+
+  <div id="pane-sub" style="display:none">
+    <p class="prose sub">What customers are doing with the free catalog. Anything in <b>needs human</b> is stuck waiting on
+    a person — a login, a CAPTCHA, an email verification, an editorial decision. Observed link is what the live page
+    actually renders, which is the only link fact we ever trust.</p>
+    <div class="kpis" id="sub_kpis"></div>
+    <div style="overflow-x:auto">
+    <table>
+      <thead><tr>
+        <th>Company</th><th>Platform</th><th>Kind</th><th>State</th>
+        <th>Listing</th><th>Observed link</th><th>Indexed</th><th>Updated</th>
+      </tr></thead>
+      <tbody id="rows_sub"></tbody>
+    </table>
+    </div>
   </div>
 
   <div id="pane-ana" style="display:none">
@@ -426,16 +437,14 @@ export const ADMIN_HTML = `<!doctype html>
 <div class="toast" id="toast"></div>
 
 <script>
-// Paid and free are two sections over the same table, split on cost_type, each
-// with its own filters, paging and sort. Everything below takes the view name.
+// The sites table is paid publishers only since migration 010 — the free rows
+// moved to the opportunities catalog, which has its own shape and loader below.
 const VIEWS = {
   inv:  { cost: 'paid', rows: 'rows',      info: 'pageinfo',      noun: 'paid sites',
           q: 'q',      niche: 'fniche',      status: 'fstatus',      mode: 'fmode',
-          cols: 14, page: 1, sort: 'cite_score', dir: 'desc', loaded: false },
-  free: { cost: 'free', rows: 'rows_free', info: 'pageinfo_free', noun: 'free sites',
-          q: 'q_free', niche: 'fniche_free', status: 'fstatus_free', mode: 'fmode_free',
-          cols: 11, page: 1, sort: 'cite_score', dir: 'desc', loaded: false },
+          cols: 13, page: 1, sort: 'cite_score', dir: 'desc', loaded: false },
 };
+const OPPS = { page: 1, sort: 'priority_score', dir: 'desc', loaded: false };
 const $ = (id) => document.getElementById(id);
 // Auth is the SSO session cookie — sent automatically, nothing to store.
 const hdrs = () => ({ 'content-type': 'application/json' });
@@ -616,27 +625,29 @@ async function boot() {
 }
 async function stats() {
   const s = await (await fetch('/admin/api/stats', { headers: hdrs() })).json();
-  const free = s.free_sites ?? 0;
+  const opps = s.opportunities ?? 0;
   $('stats').innerHTML =
     '<span><b>' + (s.paid_sites ?? s.sites) + '</b> paid</span>' +
-    '<span><b>' + free + '</b> free</span>' +
+    '<span><b>' + opps + '</b> free opportunities</span>' +
     '<span><b>' + s.active + '</b> active</span>' +
     '<span><b>' + s.priced + '</b> priced</span>' +
     '<span>avg markup <b>×' + (s.avg_markup ?? '–') + '</b></span>' +
     '<span>avg margin <b>$' + (s.avg_margin ?? '–') + '</b></span>' +
     (s.paid_unpriced ? '<span class="warn"><b>' + s.paid_unpriced + '</b> paid, unpriced</span>' : '') +
-    '<span class="warn"><b>' + s.attr_unknown + '</b> link-attr unknown</span>';
-  const ft = $('tab-free');
-  if (ft) ft.textContent = free ? ('Free inventory (' + free + ')') : 'Free inventory';
+    '<span class="warn"><b>' + s.attr_unknown + '</b> link-attr unknown</span>' +
+    (s.opportunities_unverified ? '<span class="warn"><b>' + s.opportunities_unverified + '</b> unverified</span>' : '');
+  const ot = $('tab-opp');
+  if (ot) ot.textContent = opps ? ('Opportunities (' + opps + ')') : 'Opportunities';
 }
 function showTab(t) {
-  for (const k of ['inv','free','ord','fol','ana','eng','key']) {
+  for (const k of ['inv','opp','sub','ord','fol','ana','eng','key']) {
     $('pane-' + k).style.display = t === k ? 'block' : 'none';
     $('tab-' + k).className = 'tab' + (t === k ? ' active' : '');
   }
-  if (t === 'free' && !VIEWS.free.loaded) {
-    load('free', 1).catch(e => showError('rows_free', 'Could not load free inventory: ' + (e && e.message || e), "load('free',1)"));
+  if (t === 'opp' && !OPPS.loaded) {
+    loadOpps(1).catch(e => showError('rows_opp', 'Could not load opportunities: ' + (e && e.message || e), 'loadOpps(1)'));
   }
+  if (t === 'sub') loadSubmissions();
   if (t === 'ord') loadOrders();
   if (t === 'fol') loadFollowups();
   if (t === 'ana') analytics();
@@ -869,8 +880,9 @@ async function analytics() {
   const ready = d.inventory_readiness || {};
   $('a_ready').innerHTML = tbl(
     [{t:'Check'},{t:'Count',n:1}],
-    [['Sites total', ready.total_sites],
-     ['Free sites', ready.free_sites],
+    [['Paid publishers', ready.total_sites],
+     ['Free opportunities', ready.opportunities],
+     ['Opportunities still unverified', ready.opportunities_unverified],
      ['Link attribute still unknown (launch blocker)', ready.link_attr_unknown],
      ['Unpriced sites', ready.unpriced],
      ['Orders held $', dollars(ord.listed_cents)]],
@@ -895,8 +907,6 @@ function resetFilters(v) {
   load(v, 1);
 }
 
-// cost_type is set from the view, never from a dropdown: the tab you are on is
-// the section, so a paid site can never turn up in the free table.
 async function load(v, p) {
   const view = VIEWS[v];
   if (!view) return;
@@ -913,7 +923,7 @@ async function load(v, p) {
   $(view.info).textContent = 'page ' + d.page + ' — ' + d.total + ' ' + view.noun;
   const sites = d.sites || [];
   $(view.rows).innerHTML = sites.length
-    ? sites.map(v === 'free' ? freeRowHtml : rowHtml).join('')
+    ? sites.map(rowHtml).join('')
     : '<tr><td colspan="' + view.cols + '" class="empty">No ' + view.noun + ' match these filters. '
       + '<button class="copy" data-reset="' + v + '">Reset filters</button></td></tr>';
   const sel = $(view.niche);
@@ -987,60 +997,14 @@ function rowHtml(s) {
     '<td><select data-field="link_attribute">' + attrs.map(a => '<option' + (a === s.link_attribute ? ' selected' : '') + '>' + a + '</option>').join('') + '</select></td>' +
     '<td class="num"><input type="number" data-field="max_links_per_post" data-kind="int" value="' + (s.max_links_per_post ?? '') + '"></td>' +
     '<td><select data-field="status">' + stats_.map(a => '<option' + (a === s.status ? ' selected' : '') + '>' + a + '</option>').join('') + '</select></td>' +
-    sectionCell(s) +
     '</tr>';
 }
-// The one control that moves a publisher between the two sections. Changing it
-// patches cost_type, so the row leaves this table and shows up in the other.
-function sectionCell(s) {
-  const cur = s.cost_type === 'free' ? 'free' : 'paid';
-  return '<td><select data-field="cost_type" title="Move this publisher to the other section">'
-    + ['paid','free'].map(c => '<option' + (c === cur ? ' selected' : '') + '>' + c + '</option>').join('')
-    + '</select></td>';
-}
-// Free rows have no seller price, markup, listed price or margin — those columns
-// would be four dashes on every row. What an operator needs here is how to get
-// in, whether the publisher wants a link back, and the submission instructions.
-function freeRowHtml(s) {
-  const attrs = ['unknown','dofollow','sponsored','ugc','nofollow'];
-  const stats_ = ['active','paused','burned'];
-  const modes = ['paid_placement','self_serve','apply_editorial','link_exchange','unavailable'];
-  const recip = s.requires_reciprocal_link ? 1 : 0;
-  return '<tr data-id="' + s.id + '">' +
-    '<td class="domain"><button type="button" class="domain-btn" data-open-site="' + esc(s.id) + '">' + esc(s.domain) + '</button>' + enrichPill(s) + (s.note ? '<div class="sub">' + esc(s.note).slice(0,60) + '</div>' : '') + '</td>' +
-    '<td>' + esc(s.niche ?? '–') + (s.subniche ? '<div class="sub">' + esc(s.subniche) + '</div>' : '') + '</td>' +
-    '<td class="num">' + (s.cite_score ?? '–') + '</td>' +
-    '<td class="num">' + (s.dr ?? '–') + '</td>' +
-    '<td class="num">' + (s.traffic ?? '–') + '</td>' +
-    '<td><select data-field="acquisition_mode">' + modes.map(a => '<option' + (a === s.acquisition_mode ? ' selected' : '') + '>' + a + '</option>').join('') + '</select></td>' +
-    '<td><select data-field="requires_reciprocal_link" data-kind="int">' +
-      [[0,'no'],[1,'yes']].map(o => '<option value="' + o[0] + '"' + (o[0] === recip ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select></td>' +
-    '<td><select data-field="link_attribute">' + attrs.map(a => '<option' + (a === s.link_attribute ? ' selected' : '') + '>' + a + '</option>').join('') + '</select></td>' +
-    '<td class="instr"><input data-field="agent_instructions" placeholder="how to publish…" value="' + esc(s.agent_instructions ?? '') + '"></td>' +
-    '<td><select data-field="status">' + stats_.map(a => '<option' + (a === s.status ? ' selected' : '') + '>' + a + '</option>').join('') + '</select></td>' +
-    sectionCell(s) +
-    '</tr>';
-}
-const viewOf = (el) => {
-  const body = el.closest('tbody');
-  return body && body.id === 'rows_free' ? 'free' : 'inv';
-};
+
 async function patch(el, field, value) {
   const row = el.closest('tr');
-  const v = viewOf(el);
   const r = await fetch('/admin/api/sites/' + row.dataset.id, { method: 'PATCH', headers: hdrs(), body: JSON.stringify({ [field]: value }) });
   const d = await r.json();
   if (!r.ok) { toast(d.error || 'update failed', true); return; }
-  // Moving a site between sections empties its row from this table, so reload
-  // both instead of patching cells that no longer belong here.
-  if (field === 'cost_type') {
-    const other = v === 'inv' ? 'free' : 'inv';
-    toast('moved to ' + value + ' inventory');
-    load(v, VIEWS[v].page);
-    if (VIEWS[other].loaded) load(other, VIEWS[other].page);
-    stats();
-    return;
-  }
   const listed = row.querySelector('[data-col=listed]');
   if (listed) {
     listed.textContent = d.site.listed_price != null ? '$' + d.site.listed_price : '–';
@@ -1062,18 +1026,6 @@ async function addSite() {
   const d = await r.json();
   if (!r.ok) { toast(d.error || 'add failed', true); return; }
   toast('added ' + d.domain); load('inv', 1); stats();
-}
-async function addFreeSite() {
-  const body = { domain: $('fa_domain').value, niche: $('fa_niche').value || null,
-    cost_type: 'free', acquisition_mode: $('fa_mode').value,
-    agent_instructions: $('fa_instructions').value || null,
-    requires_reciprocal_link: $('fa_recip').checked ? 1 : 0 };
-  const r = await fetch('/admin/api/sites', { method: 'POST', headers: hdrs(), body: JSON.stringify(body) });
-  const d = await r.json();
-  if (!r.ok) { toast(d.error || 'add failed', true); return; }
-  for (const id of ['fa_domain','fa_niche','fa_instructions']) { const el = $(id); if (el) el.value = ''; }
-  $('fa_recip').checked = false;
-  toast('added ' + d.domain + ' to free'); load('free', 1); stats();
 }
 // One listener for every editable cell — inline handlers needed escaping that
 // was easy to get wrong inside a template literal.
@@ -1114,18 +1066,133 @@ function onCellChange(ev) {
   patch(el, field, value);
 }
 document.getElementById('rows').addEventListener('change', onCellChange);
-document.getElementById('rows_free').addEventListener('change', onCellChange);
 
-for (const v of ['inv', 'free']) {
-  document.getElementById('pane-' + v).addEventListener('click', (ev) => {
-    const t = ev.target;
-    if (!t || !t.closest) return;
-    const open = t.closest('[data-open-site]');
-    if (open && open.dataset.openSite) { openSite(open.dataset.openSite, v); return; }
-    if (t.dataset && t.dataset.reset) { resetFilters(t.dataset.reset); return; }
-    const th = t.closest('th.sort');
-    if (th && th.dataset.sort) setSort(v, th.dataset.sort);
+document.getElementById('pane-inv').addEventListener('click', (ev) => {
+  const t = ev.target;
+  if (!t || !t.closest) return;
+  const open = t.closest('[data-open-site]');
+  if (open && open.dataset.openSite) { openSite(open.dataset.openSite, 'inv'); return; }
+  if (t.dataset && t.dataset.reset) { resetFilters(t.dataset.reset); return; }
+  const th = t.closest('th.sort');
+  if (th && th.dataset.sort) setSort('inv', th.dataset.sort);
+});
+
+// ---------- opportunities ----------
+// The free catalog. An operator's job here is verification: the workbook gave us
+// 843 rows of which one had both its requirements and its source officially
+// reviewed, so every row starts flagged and gets cleared by hand.
+const CONTRIB_LABEL = { article: 'article', profile: 'profile', program: 'program' };
+
+function oppRowHtml(o) {
+  const stats_ = ['active','watchlist','retired'];
+  const cost = o.is_free_confirmed
+    ? '<span class="pill ok">' + esc(o.cost_model || 'free') + '</span>'
+    : (o.cost_confidence === 'unknown'
+      ? '<span class="pill warn">not established</span>'
+      : esc(o.cost_model || '–'));
+  const conf = o.needs_reverification
+    ? '<span class="pill warn">template — verify</span>'
+    : '<span class="pill ok">verified ' + esc((o.last_checked || '').slice(0, 10)) + '</span>';
+  const url = o.submission_url || ('https://' + (o.domain || ''));
+  return '<tr data-id="' + esc(o.id) + '">' +
+    '<td class="domain"><a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(o.platform) + '</a>' +
+      (o.domain ? '<div class="sub">' + esc(o.domain) + '</div>' : '') + '</td>' +
+    '<td>' + esc(CONTRIB_LABEL[o.contribution] || o.contribution || '') + '</td>' +
+    '<td>' + esc(o.opportunity_type || '–') + '</td>' +
+    '<td>' + esc(o.niche || '–') + '</td>' +
+    '<td>' + cost + (o.requires_reciprocal_link ? '<div class="sub">wants a link back</div>' : '') + '</td>' +
+    '<td>' + esc((o.link_attribute_claim || 'unknown').replace('claimed_', 'claimed ')) + '</td>' +
+    '<td class="num">' + (o.priority_score ?? '–') + '</td>' +
+    '<td class="num">' + (o.prep_minutes != null ? o.prep_minutes + 'm' : '–') + '</td>' +
+    '<td>' + conf + '</td>' +
+    '<td><select data-opp-field="status">' + stats_.map(a => '<option' + (a === o.status ? ' selected' : '') + '>' + a + '</option>').join('') + '</select></td>' +
+    '<td>' + (o.needs_reverification
+      ? '<button class="copy" data-verify="' + esc(o.id) + '">Mark verified</button>'
+      : '<span class="sub">done</span>') + '</td>' +
+    '</tr>';
+}
+
+async function loadOpps(p) {
+  OPPS.page = Math.max(1, p || 1);
+  const u = new URLSearchParams({ page: OPPS.page, sort: OPPS.sort, dir: OPPS.dir });
+  const add = (k, id) => { const el = $(id); if (el && el.value) u.set(k, el.value); };
+  add('q', 'q_opp'); add('contribution', 'f_contribution'); add('status', 'f_opp_status');
+  add('cost', 'f_cost'); add('verified', 'f_verify');
+  const r = await fetch('/admin/api/opportunities?' + u, { headers: hdrs() });
+  if (r.status === 401) { location.href = '/auth/login'; return; }
+  const d = await r.json();
+  OPPS.loaded = true;
+  $('pageinfo_opp').textContent = 'page ' + d.page + ' — ' + d.total + ' opportunities';
+  const rows = d.opportunities || [];
+  $('rows_opp').innerHTML = rows.length
+    ? rows.map(oppRowHtml).join('')
+    : '<tr><td colspan="11" class="empty">No opportunities match these filters.</td></tr>';
+  document.querySelectorAll('#pane-opp th.sort').forEach(th => {
+    const on = th.dataset.sort === OPPS.sort;
+    th.classList.toggle('sorted', on);
+    th.dataset.dir = on ? OPPS.dir : '';
   });
+}
+
+async function patchOpp(id, body) {
+  const r = await fetch('/admin/api/opportunities/' + id, { method: 'PATCH', headers: hdrs(), body: JSON.stringify(body) });
+  const d = await r.json();
+  if (!r.ok) { toast(d.error || 'update failed', true); return false; }
+  return true;
+}
+
+document.getElementById('pane-opp').addEventListener('click', async (ev) => {
+  const t = ev.target;
+  if (!t || !t.closest) return;
+  const v = t.closest('[data-verify]');
+  if (v) {
+    // Stamping "verified" is a claim an operator makes with their own eyes, so
+    // say what it means before recording it.
+    if (!confirm('Only do this if you have just opened the live page and confirmed the cost and the requirements. Mark it verified?')) return;
+    if (await patchOpp(v.dataset.verify, { verified: true })) { toast('marked verified'); loadOpps(OPPS.page); stats(); }
+    return;
+  }
+  const th = t.closest('th.sort');
+  if (th && th.dataset.sort) {
+    if (OPPS.sort === th.dataset.sort) OPPS.dir = OPPS.dir === 'asc' ? 'desc' : 'asc';
+    else { OPPS.sort = th.dataset.sort; OPPS.dir = 'desc'; }
+    loadOpps(1);
+  }
+});
+
+document.getElementById('rows_opp').addEventListener('change', async (ev) => {
+  const el = ev.target;
+  const field = el && el.dataset && el.dataset.oppField;
+  if (!field) return;
+  const row = el.closest('tr');
+  if (await patchOpp(row.dataset.id, { [field]: el.value })) { toast(field + ' saved'); stats(); }
+});
+
+// ---------- submissions ----------
+async function loadSubmissions() {
+  const r = await fetch('/admin/api/submissions', { headers: hdrs() });
+  if (r.status === 401) { location.href = '/auth/login'; return; }
+  const d = await r.json();
+  const kpi = (v, l, hi) => '<div class="kpi' + (hi ? ' hi' : '') + '"><div class="n">' + v + '</div><div class="l">' + l + '</div></div>';
+  $('sub_kpis').innerHTML =
+    kpi(d.total ?? 0, 'Submissions') +
+    kpi(d.by_state?.live ?? 0, 'Live') +
+    kpi((d.by_state?.submitted ?? 0) + (d.by_state?.pending ?? 0), 'Waiting on the platform') +
+    kpi(d.by_state?.needs_human ?? 0, 'Needs a human', true) +
+    kpi(d.companies ?? 0, 'Companies');
+  const rows = d.submissions || [];
+  $('rows_sub').innerHTML = rows.length
+    ? rows.map(x => '<tr>' +
+        '<td>' + esc(x.company_url || '') + '</td>' +
+        '<td>' + esc(x.platform || '') + '</td>' +
+        '<td>' + esc(x.contribution || '') + '</td>' +
+        '<td><span class="pill ' + (x.state === 'live' ? 'ok' : x.state === 'needs_human' ? 'warn' : '') + '">' + esc(x.state) + '</span></td>' +
+        '<td>' + (x.published_url ? '<a href="' + esc(x.published_url) + '" target="_blank" rel="noopener">listing</a>' : '<span class="sub">–</span>') + '</td>' +
+        '<td>' + (x.observed_rel ? esc(x.observed_rel) : '<span class="sub">not checked</span>') + '</td>' +
+        '<td>' + (x.observed_indexed == null ? '<span class="sub">–</span>' : (x.observed_indexed ? 'yes' : 'no')) + '</td>' +
+        '<td class="sub">' + esc((x.updated_at || '').slice(0, 16)) + '</td>' +
+        '</tr>').join('')
+    : '<tr><td colspan="8" class="empty">No customer has run the free path yet.</td></tr>';
 }
 document.getElementById('pane-ana').addEventListener('click', (ev) => {
   const th = ev.target && ev.target.closest && ev.target.closest('th.sort');

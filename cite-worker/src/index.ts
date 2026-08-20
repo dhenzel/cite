@@ -30,6 +30,11 @@ import {
 } from './stripe.js';
 import { buyerPublicList, buyerPublicText } from './enrich-extract.js';
 import { listedPriceCents, loadBuyerSite, screenPost, wordCount, writingBrief, bodyHash } from './placement.js';
+import {
+  analyzeCompany, judge, observeLink, preparePacket, publicOpportunity,
+  publicOpportunityDetail, unknownAttributes, withStated,
+  SUBMISSION_STATES, type Evidence,
+} from './opportunities.js';
 
 export interface Env {
   DB: D1Database;
@@ -134,6 +139,65 @@ const isBuyerPublisher = (r: Row): boolean =>
 const PAID = "COALESCE(cost_type,'paid')='paid'";
 const FREE = "COALESCE(cost_type,'paid')='free'";
 const COST_TYPES = ['paid', 'free'];
+
+// ---------- free opportunities ----------
+// The free catalog is its own table (migration 010): places a CUSTOMER gets
+// listed, not publishers we sell. `contribution` says what they contribute.
+const CONTRIBUTIONS = ['article', 'profile', 'program'];
+/** Only these are offered; watchlist rows stay operator-only. */
+const OPP_ACTIVE = "status='active'";
+
+/** One page fetch with a budget, for analyze_site and check_listing_status. */
+async function fetchPage(url: string, timeoutMs = 8000): Promise<{ ok: boolean; html: string; status: number; finalUrl: string }> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      redirect: 'follow',
+      signal: controller.signal,
+      headers: {
+        'user-agent': 'placementbot/1.0 (+https://placement.sh; free listing assistant)',
+        accept: 'text/html,application/xhtml+xml',
+      },
+    });
+    const html = res.ok ? (await res.text()).slice(0, 400_000) : '';
+    return { ok: res.ok, html, status: res.status, finalUrl: res.url || url };
+  } catch {
+    return { ok: false, html: '', status: 0, finalUrl: url };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+type CompanyRecord = { id: string; workspace_key: string; canonical_url: string; evidence: Evidence };
+
+/**
+ * company_id is an unguessable capability: the free tier has no accounts, so
+ * holding the id is what authorises reading and writing that company's work.
+ */
+async function loadCompany(env: Env, companyId: unknown): Promise<CompanyRecord | null> {
+  if (typeof companyId !== 'string' || !companyId) return null;
+  const row = (await env.DB.prepare(
+    `SELECT id, workspace_key, canonical_url, evidence FROM company_profiles WHERE id = ?`,
+  ).bind(companyId).first()) as Row | null;
+  if (!row) return null;
+  let evidence: Evidence;
+  try { evidence = JSON.parse(String(row.evidence)) as Evidence; } catch { return null; }
+  return {
+    id: String(row.id),
+    workspace_key: String(row.workspace_key),
+    canonical_url: String(row.canonical_url),
+    evidence,
+  };
+}
+
+const loadPlaybook = async (env: Env, id: unknown): Promise<Row | null> =>
+  typeof id === 'string' && id
+    ? ((await env.DB.prepare(`SELECT * FROM opportunity_playbooks WHERE id = ?`).bind(id).first()) as Row | null)
+    : null;
+
+/** Free-path guidance repeated on every payload so an agent cannot miss it. */
+const FREE_PATH_NOTE = 'Free forever: no account, no card, no credits. placement.sh also sells paid publisher placements — a different mechanism, only worth raising once the free options are exhausted.';
 
 const parseTopicList = (raw: unknown): string[] => {
   if (!raw) return [];
@@ -326,6 +390,119 @@ const tools = [
     },
     annotations: { title: 'Submit placement', readOnlyHint: false, destructiveHint: false },
   },
+
+  // ---- free side: get listed without paying (SPEC §19) ----
+  // No account, no card, no credits. The agent matches and prepares; a human
+  // logs in, passes the CAPTCHA and presses the button.
+  {
+    name: 'analyze_site',
+    description: 'First tool for the FREE path. Read a company\'s site and build the evidence profile everything else matches against. Returns a company_id to pass to search_opportunities / prepare_submission, and lists what could not be determined. No account, no card. Licences, certifications and memberships are never inferred — ask the human and pass them as `stated`.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'The company site to analyse, e.g. https://example.com' },
+        stated: {
+          type: 'object',
+          description: 'Facts the HUMAN confirmed — never your own guesses. Keys: software, ai, open_source, integration, location, customers, launch, visuals, license, certification, membership. Booleans.',
+          additionalProperties: { type: 'boolean' },
+        },
+        workspace_key: { type: 'string', description: 'Returned by an earlier analyze_site. Pass it to keep several companies under one workspace.' },
+      },
+      required: ['url'],
+    },
+    annotations: { title: 'Analyze a site', readOnlyHint: false, destructiveHint: false },
+  },
+  {
+    name: 'search_opportunities',
+    description: 'Free places a company can get listed, profiled or published: directories, marketplaces, review platforms, partner programs, and sites that take contributed articles. Pass company_id to apply the eligibility gates — ineligible platforms are suppressed with a reason instead of being listed. Free forever, no account. Costs and requirements are re-checked live before any work.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        company_id: { type: 'string', description: 'From analyze_site. Without it you get an unfiltered browse and no eligibility check.' },
+        contribution: { type: 'string', enum: CONTRIBUTIONS, description: 'article = you write a post · profile = your company gets listed · program = you apply to join' },
+        text: { type: 'string', description: 'Free-text match on platform, type, niche or audience' },
+        niche: { type: 'string' },
+        free_only: { type: 'boolean', description: 'Only rows where a free path is confirmed. 53% of the catalog has an unverified cost.' },
+        max_prep_minutes: { type: 'number', description: 'Cap the preparation effort' },
+        tier: { type: 'string', enum: ['Tier 1', 'Tier 2', 'Tier 3'] },
+        limit: { type: 'integer', minimum: 1, maximum: PAGE_MAX },
+        offset: { type: 'integer', minimum: 0 },
+      },
+    },
+    annotations: { title: 'Search free opportunities', readOnlyHint: true, destructiveHint: false },
+  },
+  {
+    name: 'get_opportunity',
+    description: 'Everything known about one free opportunity: eligibility gates, what to prepare, what the agent may do, what the human must do, blockers, and how far the facts were verified. Read this before preparing anything.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        opportunity_id: { type: 'string' },
+        company_id: { type: 'string', description: 'Include to get the eligibility verdict for this company' },
+      },
+      required: ['opportunity_id'],
+    },
+    annotations: { title: 'Get opportunity', readOnlyHint: true, destructiveHint: false },
+  },
+  {
+    name: 'prepare_submission',
+    description: 'Build the submission packet for one opportunity: the exact fields, the copy to write with its length limits, the assets needed, what is still missing, and the human checkpoints. Preparation NEVER submits — you draft, the human logs in and posts. Re-check the live page first; most requirements come from a class template.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        opportunity_id: { type: 'string' },
+        company_id: { type: 'string' },
+      },
+      required: ['opportunity_id', 'company_id'],
+    },
+    annotations: { title: 'Prepare a submission', readOnlyHint: true, destructiveHint: false },
+  },
+  {
+    name: 'record_submission',
+    description: 'Record what actually happened with an opportunity: prepared, submitted, pending, live, rejected, skipped, or needs_human. Idempotent per company+opportunity, so a retry updates rather than duplicates. Save the receipt and the reference number — they are the evidence.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        company_id: { type: 'string' },
+        opportunity_id: { type: 'string' },
+        state: { type: 'string', enum: SUBMISSION_STATES as unknown as string[] },
+        published_url: { type: 'string', description: 'The live listing, once there is one' },
+        receipt_url: { type: 'string' },
+        reference: { type: 'string', description: 'Any confirmation or ticket number the platform gave' },
+        account_owner: { type: 'string', description: 'Who owns the account the submission was made from' },
+        packet: { type: 'object', description: 'The values actually submitted', additionalProperties: true },
+        note: { type: 'string' },
+      },
+      required: ['company_id', 'opportunity_id', 'state'],
+    },
+    annotations: { title: 'Record a submission', readOnlyHint: false, destructiveHint: false },
+  },
+  {
+    name: 'check_listing_status',
+    description: 'Fetch a live listing and record what it ACTUALLY does: whether the link is there, the rel attribute it really carries, and whether the page is indexable. Use this instead of trusting the claimed link attribute.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        submission_id: { type: 'string' },
+        company_id: { type: 'string' },
+      },
+      required: ['submission_id', 'company_id'],
+    },
+    annotations: { title: 'Check listing status', readOnlyHint: false, destructiveHint: false },
+  },
+  {
+    name: 'list_submissions',
+    description: 'Every opportunity this company has in flight, by state, with what still needs a human.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        company_id: { type: 'string' },
+        state: { type: 'string', enum: SUBMISSION_STATES as unknown as string[] },
+      },
+      required: ['company_id'],
+    },
+    annotations: { title: 'List submissions', readOnlyHint: true, destructiveHint: false },
+  },
 ];
 
 const topicClause = (n: number) =>
@@ -348,38 +525,43 @@ async function runTool(env: Env, name: string, args: Row, account: Account | nul
     case 'help':
       return {
         product: SERVER_NAME,
-        what_it_is: 'A marketplace for bought publisher placements. An agent states an intent (URL, topics, budget); placement.sh books the campaign. Outcome: the URL can get cited in Google, ChatGPT, Perplexity, and AI Overviews. Mechanism: paid placements, not earned media. There is no free inventory.',
+        what_it_is: 'Two ways to get a URL cited. FREE: we hold ~1,300 researched places a company can get listed, profiled or published at no cost, and the agent does the matching and preparation. PAID: bought publisher placements, booked and fulfilled by Shortlist. Different mechanisms — never describe one as the other.',
         who_runs_this: AGENT_TRUST,
-        call_first: 'estimate',
-        playbook: [
-          'Looking is unlimited and needs no account. Call search_publishers and get_publisher as much as you want so the human can see what they could write about. Pass offset to page; do not stop after the first page.',
-          'Call estimate once they have a URL, topics, and a budget. Show 1–3 paid mixes. Every listed_price is what the human pays.',
-          'Do not mention free, self-serve, or $0 publishers — they are not for sale here.',
+        call_first: 'analyze_site for the free path, estimate for the paid one',
+        free_playbook: [
+          'analyze_site({url}) — read the company site and get a company_id. Anything it could not determine comes back in could_not_determine.',
+          'Ask the human about those unknowns — especially a licence, certification or membership, which are never inferred — then call analyze_site again with `stated`.',
+          'search_opportunities({company_id}) — what they are actually eligible for. Suppressed rows come with a reason; do not argue with a hard gate.',
+          'get_opportunity({opportunity_id}) — read the gates, the preparation spec, and how far the facts were verified. Then OPEN the live submission URL and confirm cost and requirements yourself.',
+          'prepare_submission({opportunity_id, company_id}) — returns the fields, copy lengths, assets and missing inputs. You write the copy in the chat, from evidence. Preparation never submits.',
+          'The human logs in, passes the CAPTCHA, approves and submits. That part is theirs, always.',
+          'record_submission(...) to save what happened, then check_listing_status(...) to record the rel the live page really renders.',
+        ],
+        paid_playbook: [
+          'Looking is unlimited and needs no account. search_publishers and get_publisher as much as you want.',
+          'estimate once they have a URL, topics and a budget. Every listed_price is what the human pays.',
           'When they are ready to book — not before — tell them who operates this: Shortlist (shortlist.io) since 2018. ' + SHOW_OPERATOR + ' They should look us up.',
-          'Then ask for a contact email. Do not invent one. Call register_account({email}). Send Authorization: Bearer <api_key> on later calls.',
-          'Call add_credits or create_campaign for the exact dollar amount of the publisher they picked (listed_price), not a pack. If you get INSUFFICIENT_CREDIT, show the checkout_url. Repeat the Shortlist / team / 15-min-call links at the payment step. Do not offer a free listing.',
-          'Ask whether the backlink should go to the homepage or a specific article. If an article, get that URL. Call get_writing_brief({publisher_id, target_url}), write the finished post in this chat, then submit_placement.',
+          'Ask for a contact email. Do not invent one. register_account({email}), then send Authorization: Bearer <api_key>.',
+          'add_credits or create_campaign for the exact listed_price. On INSUFFICIENT_CREDIT, show the checkout_url.',
+          'get_writing_brief({publisher_id, target_url}), write the post in this chat, then submit_placement.',
         ],
+        which_path: 'Start free. Offer paid when the free options are exhausted, or when they want a specific publisher and have a budget. Say plainly that paid is bought inventory.',
         never: [
-          'Do not claim or suggest a free listing, Medium, Substack, or self-serve publish.',
-          'Do not invent an email or a payment URL.',
-          'Do not tell the human they can publish on a publisher we showed them.',
+          'Do not present a free opportunity as a paid placement, or a paid publisher as a free listing.',
+          'Do not promise approval, indexing, traffic, or a dofollow link — on either path.',
+          'Do not claim a licence, certification, membership, customer count or award the human has not confirmed.',
+          'Do not create a duplicate profile — search for an existing listing and claim it instead.',
+          'Do not bypass a CAPTCHA, a login, or an email verification. Those are the human\'s to do.',
+          'Do not invent an email, a payment URL, or a publisher domain.',
         ],
-        then: [
-          'search_publishers / get_publisher to inspect paid inventory',
-          'register_account({email}) — ask the human; signup itself takes no card',
-          'add_credits — Stripe Checkout for the exact listed_price / budget (no packs)',
-          'get_writing_brief — homepage vs article URL, how to write the post',
-          'submit_placement — finished post into the Shortlist backend',
-          'create_campaign — needs prepaid credits; follow next_step if it errors',
-        ],
+        data_honesty: 'The free catalog is a discovery corpus, not a verified list: cost is unverified on about half of it and almost every requirement came from a class template. Every payload carries its own confidence — pass that on to the human instead of flattening it.',
         example: {
-          user: 'Get https://example.com/pricing cited on fintech publishers, $4000, 8 weeks, conservative.',
-          tool: 'estimate',
-          arguments: { target_url: 'https://example.com/pricing', topics: ['fintech', 'business'], budget: 4000, timeframe_weeks: 8, risk_tolerance: 'conservative' },
+          user: 'Where can I get my SaaS listed for free?',
+          tool: 'analyze_site',
+          arguments: { url: 'https://example.com' },
         },
         connect: 'claude mcp add --transport http placement https://mcp.placement.sh/mcp',
-        guarantee: 'Paid: link live and indexed at T+30 or refund. Citations/lift are measured, never promised.',
+        guarantee: 'Paid: link live and indexed at T+30 or refund. Free: no guarantee of approval or indexing — that is the platform\'s call, and we say so up front.',
       };
     case 'search_publishers': {
       const topics = (args.topics as string[] | undefined) ?? [];
@@ -512,7 +694,7 @@ async function runTool(env: Env, name: string, args: Row, account: Account | nul
           email,
           tier: existing.tier === 'free' ? 'registered' : existing.tier,
           next_step: 'Tell the human this is a Shortlist product since 2018. ' + SHOW_OPERATOR + ' Then call create_campaign for the mix they picked. If it returns INSUFFICIENT_CREDIT, follow next_step there. Do not offer a free listing.',
-          note: 'An account already exists for this email; returning its key. There are no free placements — prepaid credits are required to book.',
+          note: 'An account already exists for this email; returning its key. Prepaid credits are required to book a paid placement. The free listing path (analyze_site) needs no account at all.',
         };
       }
       const key = `ck_${crypto.randomUUID().replace(/-/g, '')}`;
@@ -807,9 +989,311 @@ async function runTool(env: Env, name: string, args: Row, account: Account | nul
     case 'claim_free_placement':
       return {
         error: 'TOOL_REMOVED',
-        message: 'placement.sh does not offer free listings. Inventory is paid placements only.',
-        next_step: 'Call estimate, then ask the human for an email and register_account, then create_campaign. Do not offer Medium, Substack, or self-serve publish.',
+        message: 'This tool is gone. Free listings now live on their own path: analyze_site → search_opportunities → get_opportunity → prepare_submission.',
+        next_step: 'Call analyze_site with the company URL. For bought publisher placements, call estimate instead.',
       };
+
+    // ---------- free path ----------
+    case 'analyze_site': {
+      const raw = String(args.url ?? '').trim();
+      if (!raw) return { error: 'INVALID_ARGUMENT', message: 'url is required' };
+      const url = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+      let canonical: string;
+      try { canonical = new URL(url).origin; } catch { return { error: 'INVALID_URL', url: raw }; }
+
+      const page = await fetchPage(url);
+      if (!page.ok) {
+        return {
+          error: 'SITE_UNREACHABLE',
+          url: canonical,
+          status: page.status,
+          message: 'Could not read the site, so there is no evidence to match on. Check the URL with the human, or pass what they tell you as `stated`.',
+        };
+      }
+
+      const workspace_key = typeof args.workspace_key === 'string' && args.workspace_key
+        ? args.workspace_key
+        : `ws_${crypto.randomUUID()}`;
+      const evidence = withStated(analyzeCompany(page.html, canonical), args.stated as Row | undefined);
+      const unknowns = unknownAttributes(evidence);
+
+      // One profile per (workspace, url): re-analysing updates rather than forks.
+      const existing = (await env.DB.prepare(
+        `SELECT id FROM company_profiles WHERE workspace_key = ? AND canonical_url = ?`,
+      ).bind(workspace_key, canonical).first()) as { id: string } | null;
+      const company_id = existing?.id ?? `co_${crypto.randomUUID()}`;
+      await env.DB.prepare(`
+        INSERT INTO company_profiles (id, workspace_key, canonical_url, name, evidence, unknowns, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        ON CONFLICT(id) DO UPDATE SET
+          name=excluded.name, evidence=excluded.evidence, unknowns=excluded.unknowns, updated_at=datetime('now')
+      `).bind(
+        company_id, workspace_key, canonical, evidence.name ?? null,
+        JSON.stringify(evidence), JSON.stringify(unknowns),
+      ).run();
+
+      return {
+        company_id,
+        workspace_key,
+        keep_these: 'company_id identifies this company on every other free tool. There is no account and no password — treat it as a secret.',
+        profile: {
+          name: evidence.name,
+          canonical_url: evidence.canonical_url,
+          summary: evidence.summary,
+          entity_type: evidence.entity_type,
+          topics: evidence.topics,
+          signals: evidence.signals,
+        },
+        could_not_determine: unknowns,
+        ask_the_human: unknowns.length
+          ? 'Ask about these before matching, then call analyze_site again with `stated`. Never guess a licence, certification or membership — a wrong answer becomes a false claim on a real application.'
+          : undefined,
+        next_step: 'Call search_opportunities with this company_id.',
+        note: FREE_PATH_NOTE,
+      };
+    }
+
+    case 'search_opportunities': {
+      const company = await loadCompany(env, args.company_id);
+      if (args.company_id && !company) return { error: 'COMPANY_NOT_FOUND', company_id: args.company_id };
+
+      const clauses = [OPP_ACTIVE];
+      const params: unknown[] = [];
+      if (args.contribution) { clauses.push('contribution = ?'); params.push(args.contribution); }
+      if (args.niche) { clauses.push('niche LIKE ?'); params.push(`%${args.niche}%`); }
+      if (args.tier) { clauses.push('priority_tier = ?'); params.push(args.tier); }
+      if (args.free_only) clauses.push('is_free_confirmed = 1');
+      if (args.max_prep_minutes != null) { clauses.push('(prep_minutes IS NULL OR prep_minutes <= ?)'); params.push(args.max_prep_minutes); }
+      if (args.text) {
+        clauses.push('(platform LIKE ? OR opportunity_type LIKE ? OR niche LIKE ? OR platform_audience LIKE ? OR best_for LIKE ?)');
+        const like = `%${args.text}%`;
+        params.push(like, like, like, like, like);
+      }
+      const where = clauses.join(' AND ');
+      const limit = Math.min(Math.max(1, (args.limit as number | undefined) ?? 20), PAGE_MAX);
+      const offset = Math.max(0, (args.offset as number | undefined) ?? 0);
+
+      // Gates are applied in code after the SQL filter, so a suppressed row can
+      // explain itself instead of vanishing. Over-fetch to fill a page.
+      const rows = (await env.DB.prepare(`
+        SELECT o.*, p.autonomy_score
+        FROM opportunities o LEFT JOIN opportunity_playbooks p ON p.id = o.playbook_id
+        WHERE ${where}
+        ORDER BY o.priority_score DESC, o.platform ASC
+        LIMIT ? OFFSET ?
+      `).bind(...params, limit * 4, offset).all()).results as Row[];
+
+      const eligible: Row[] = [];
+      const suppressed: string[] = [];
+      const asks = new Set<string>();
+      for (const row of rows) {
+        const verdict = judge(row, company?.evidence ?? null);
+        if (!verdict.eligible) {
+          if (verdict.suppression_reason) suppressed.push(verdict.suppression_reason);
+          verdict.missing_inputs.forEach((m) => asks.add(m));
+          continue;
+        }
+        eligible.push(publicOpportunity(row, verdict));
+        if (eligible.length >= limit) break;
+      }
+      eligible.sort((a, b) => (b.score as number) - (a.score as number));
+
+      const reasons = [...new Set(suppressed)].slice(0, 6);
+      return {
+        result_count: eligible.length,
+        opportunities: eligible,
+        suppressed_count: suppressed.length,
+        suppression_reasons: reasons.length ? reasons : undefined,
+        missing_inputs: asks.size
+          ? { question: 'Answer these with the human and re-run analyze_site with `stated` — several platforms were suppressed only because we could not confirm them.', asks: [...asks] }
+          : undefined,
+        next_offset: rows.length >= limit * 4 ? offset + limit : null,
+        how_to_read_this: 'Score is eligibility + audience fit + confidence − effort and risk; why_fit shows the working. Cost is unverified on about half the catalog, so open the live page before doing the work.',
+        next_step: eligible.length
+          ? 'Call get_opportunity on the ones worth doing, then prepare_submission.'
+          : 'Nothing eligible with these filters. Widen the search, or answer the missing inputs and try again.',
+        note: FREE_PATH_NOTE,
+      };
+    }
+
+    case 'get_opportunity': {
+      const row = (await env.DB.prepare(
+        `SELECT * FROM opportunities WHERE id = ? AND ${OPP_ACTIVE}`,
+      ).bind(String(args.opportunity_id ?? '')).first()) as Row | null;
+      if (!row) return { error: 'OPPORTUNITY_NOT_FOUND', opportunity_id: args.opportunity_id };
+      const company = await loadCompany(env, args.company_id);
+      const playbook = await loadPlaybook(env, row.playbook_id);
+      const verdict = company ? judge(row, company.evidence) : undefined;
+      return {
+        ...publicOpportunityDetail(row, playbook, verdict),
+        eligible_for_this_company: verdict ? verdict.eligible : undefined,
+        why_not: verdict && !verdict.eligible ? verdict.suppression_reason : undefined,
+        next_step: verdict && !verdict.eligible
+          ? 'Not a fit — say why and move on rather than submitting anyway.'
+          : 'Open the submission URL, confirm cost and requirements are still what we say, then prepare_submission.',
+        note: FREE_PATH_NOTE,
+      };
+    }
+
+    case 'prepare_submission': {
+      const company = await loadCompany(env, args.company_id);
+      if (!company) return { error: 'COMPANY_NOT_FOUND', company_id: args.company_id, next_step: 'Call analyze_site first.' };
+      const row = (await env.DB.prepare(
+        `SELECT * FROM opportunities WHERE id = ? AND ${OPP_ACTIVE}`,
+      ).bind(String(args.opportunity_id ?? '')).first()) as Row | null;
+      if (!row) return { error: 'OPPORTUNITY_NOT_FOUND', opportunity_id: args.opportunity_id };
+
+      const verdict = judge(row, company.evidence);
+      if (!verdict.eligible) {
+        return {
+          error: 'NOT_ELIGIBLE',
+          opportunity_id: row.id,
+          reason: verdict.suppression_reason,
+          missing_inputs: verdict.missing_inputs,
+          next_step: 'Do not prepare a submission this company does not qualify for. Answer the missing inputs, or pick another opportunity.',
+        };
+      }
+
+      const playbook = await loadPlaybook(env, row.playbook_id);
+      const packet = preparePacket(row, playbook, company.evidence);
+      return {
+        ...packet,
+        before_you_start: row.needs_reverification
+          ? 'These requirements come from a class template covering many platforms like this one — open the submission URL and confirm the real form before writing anything.'
+          : 'Requirements came from an official source; still confirm the live form.',
+        check_for_an_existing_listing: 'Search the platform for this company first. If a profile exists, claim or improve it — never create a duplicate.',
+        you_write_the_copy: 'placement.sh returns the spec and the evidence; the copy is yours to draft in this chat, from what the site actually supports.',
+        then: 'When the human has submitted, call record_submission. Later, call check_listing_status to record what the live link really does.',
+        note: FREE_PATH_NOTE,
+      };
+    }
+
+    case 'record_submission': {
+      const company = await loadCompany(env, args.company_id);
+      if (!company) return { error: 'COMPANY_NOT_FOUND', company_id: args.company_id };
+      const state = String(args.state ?? '');
+      if (!(SUBMISSION_STATES as readonly string[]).includes(state)) {
+        return { error: 'BAD_STATE', allowed: SUBMISSION_STATES };
+      }
+      const opportunity_id = String(args.opportunity_id ?? '');
+      const exists = (await env.DB.prepare(`SELECT id FROM opportunities WHERE id = ?`).bind(opportunity_id).first()) as Row | null;
+      if (!exists) return { error: 'OPPORTUNITY_NOT_FOUND', opportunity_id };
+
+      const idempotency_key = `${company.id}:${opportunity_id}`;
+      const prior = (await env.DB.prepare(
+        `SELECT id, state FROM submissions WHERE idempotency_key = ?`,
+      ).bind(idempotency_key).first()) as { id: string; state: string } | null;
+      const id = prior?.id ?? `sub_${crypto.randomUUID()}`;
+
+      await env.DB.prepare(`
+        INSERT INTO submissions (id, company_id, opportunity_id, state, packet, receipt_url, published_url, account_owner, reference, idempotency_key, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        ON CONFLICT(idempotency_key) DO UPDATE SET
+          state=excluded.state,
+          packet=COALESCE(excluded.packet, submissions.packet),
+          receipt_url=COALESCE(excluded.receipt_url, submissions.receipt_url),
+          published_url=COALESCE(excluded.published_url, submissions.published_url),
+          account_owner=COALESCE(excluded.account_owner, submissions.account_owner),
+          reference=COALESCE(excluded.reference, submissions.reference),
+          updated_at=datetime('now')
+      `).bind(
+        id, company.id, opportunity_id, state,
+        args.packet ? JSON.stringify(args.packet) : null,
+        args.receipt_url ?? null, args.published_url ?? null,
+        args.account_owner ?? null, args.reference ?? null, idempotency_key,
+      ).run();
+
+      await env.DB.prepare(`
+        INSERT INTO submission_events (submission_id, from_state, to_state, actor, evidence, at)
+        VALUES (?, ?, ?, 'agent', ?, datetime('now'))
+      `).bind(id, prior?.state ?? null, state, args.note ? String(args.note) : null).run();
+
+      return {
+        submission_id: id,
+        state,
+        updated: !!prior,
+        previous_state: prior?.state,
+        next_step: state === 'submitted' || state === 'pending'
+          ? 'Come back with check_listing_status once it should be live. Do not promise the human it will be approved.'
+          : state === 'live'
+            ? 'Call check_listing_status to record the rel attribute and indexability the page actually renders.'
+            : 'Recorded.',
+        note: FREE_PATH_NOTE,
+      };
+    }
+
+    case 'check_listing_status': {
+      const company = await loadCompany(env, args.company_id);
+      if (!company) return { error: 'COMPANY_NOT_FOUND', company_id: args.company_id };
+      const sub = (await env.DB.prepare(
+        `SELECT * FROM submissions WHERE id = ? AND company_id = ?`,
+      ).bind(String(args.submission_id ?? ''), company.id).first()) as Row | null;
+      if (!sub) return { error: 'SUBMISSION_NOT_FOUND', submission_id: args.submission_id };
+      const url = typeof sub.published_url === 'string' && sub.published_url ? sub.published_url : undefined;
+      if (!url) {
+        return {
+          error: 'NO_PUBLISHED_URL',
+          submission_id: sub.id,
+          state: sub.state,
+          next_step: 'Record the listing URL with record_submission first — there is nothing to check yet.',
+        };
+      }
+
+      const page = await fetchPage(url);
+      if (!page.ok) {
+        return { submission_id: sub.id, reachable: false, status: page.status, checked_url: url, note: 'The listing did not respond. It may be pending, moderated, or gone.' };
+      }
+      const observed = observeLink(page.html, company.canonical_url);
+      const state = observed.found ? 'live' : String(sub.state);
+      await env.DB.prepare(`
+        UPDATE submissions SET state = ?, observed_rel = ?, observed_indexed = ?, updated_at = datetime('now') WHERE id = ?
+      `).bind(state, observed.rel, observed.indexable ? 1 : 0, sub.id).run();
+      if (state !== sub.state) {
+        await env.DB.prepare(`
+          INSERT INTO submission_events (submission_id, from_state, to_state, actor, evidence, at)
+          VALUES (?, ?, ?, 'agent', ?, datetime('now'))
+        `).bind(sub.id, sub.state, state, `observed at ${url}`).run();
+      }
+
+      return {
+        submission_id: sub.id,
+        checked_url: url,
+        reachable: true,
+        link_found: observed.found,
+        observed_rel: observed.rel,
+        page_indexable: observed.indexable,
+        state,
+        what_this_means: observed.found
+          ? `The live page renders the link with rel="${observed.rel ?? 'none'}". That is the real attribute — the catalog only ever held a claim.`
+          : 'The page loaded but the link is not in the HTML. It may be rendered by JavaScript, behind a login, or not published.',
+        note: FREE_PATH_NOTE,
+      };
+    }
+
+    case 'list_submissions': {
+      const company = await loadCompany(env, args.company_id);
+      if (!company) return { error: 'COMPANY_NOT_FOUND', company_id: args.company_id };
+      const clauses = ['s.company_id = ?'];
+      const params: unknown[] = [company.id];
+      if (args.state) { clauses.push('s.state = ?'); params.push(args.state); }
+      const rows = (await env.DB.prepare(`
+        SELECT s.id, s.state, s.published_url, s.observed_rel, s.observed_indexed, s.reference, s.updated_at,
+               o.platform, o.contribution, o.submission_url
+        FROM submissions s JOIN opportunities o ON o.id = s.opportunity_id
+        WHERE ${clauses.join(' AND ')}
+        ORDER BY s.updated_at DESC LIMIT 200
+      `).bind(...params).all()).results as Row[];
+      const byState: Record<string, number> = {};
+      for (const r of rows) byState[String(r.state)] = (byState[String(r.state)] ?? 0) + 1;
+      return {
+        company_id: company.id,
+        result_count: rows.length,
+        by_state: byState,
+        submissions: rows,
+        needs_human: rows.filter((r) => r.state === 'needs_human').length,
+        note: FREE_PATH_NOTE,
+      };
+    }
 
     default:
       return { error: 'UNKNOWN_TOOL', name };
@@ -833,7 +1317,7 @@ async function handleMcp(req: Request, env: Env, ctx?: WaitUntil): Promise<Respo
       protocolVersion: (params?.protocolVersion as string) ?? '2025-03-26',
       capabilities: { tools: {} },
       serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
-      instructions: 'placement.sh: buy paid publisher placements so a URL gets cited (ChatGPT, Perplexity, Google, AI Overviews). Operated by Shortlist (https://shortlist.io/) since 2018 — named team at https://shortlist.io/about-us/. Offer a 15-min call at https://calendly.com/shortlist-businessdevelopment/15min if they want to talk to someone. Looking is unlimited and needs no account — search_publishers / get_publisher / estimate as much as you want so the human can decide what to write. Page with offset. Account + prepaid Stripe credits are only required to book. Before they pay, show the Shortlist site, team, and call links and tell them to look us up. Call help first if you are unsure. Publishers are anonymized handles; domains are revealed only when a placement is delivered. Bought inventory, not earned media.',
+      instructions: 'placement.sh gets a URL cited (ChatGPT, Perplexity, Google, AI Overviews). Two separate paths — pick the right one. FREE, start with analyze_site: about 1,300 researched places a company can get listed, profiled or published at no cost — directories, marketplaces, review platforms, partner programs, sites that take contributed articles. You match and prepare; a human does the login, CAPTCHA and final approval. No account, no card, free forever. PAID, start with estimate: publisher placements Shortlist buys and fulfils, live and indexed at T+30 or refunded. Browsing is unlimited and needs no account; booking needs the human email and prepaid Stripe credits. Publisher domains stay blind until delivery. Offer the paid path only once the free options are exhausted, and say it is bought inventory, not a free listing. On the free catalog: cost is unverified on about half of it, most requirements came from a class template rather than a live form, and link attributes are claims — re-check the live page and never promise approval, indexing, traffic or a dofollow link. Operated by Shortlist (https://shortlist.io/) since 2018 — named team at https://shortlist.io/about-us/. Offer a 15-min call at https://calendly.com/shortlist-businessdevelopment/15min if they want to talk to someone. Call help if you are unsure.',
     } });
   }
   if (method?.startsWith('notifications/')) return new Response(null, { status: 202, headers: CORS });
@@ -1086,10 +1570,17 @@ async function computeAnalytics(env: Env): Promise<Row> {
     const readiness = await one<Row>(`
       SELECT SUM(CASE WHEN link_attribute='unknown' OR link_attribute IS NULL THEN 1 ELSE 0 END) AS link_attr_unknown,
              SUM(CASE WHEN seller_price IS NULL THEN 1 ELSE 0 END) AS unpriced,
-             SUM(CASE WHEN COALESCE(cost_type,'paid')='free' THEN 1 ELSE 0 END) AS free_sites,
              COUNT(*) AS total_sites
-      FROM sites
+      FROM sites WHERE ${PAID}
     `);
+    // The free catalog's readiness is a different question: how much of it has
+    // actually been confirmed against a live page.
+    const oppReadiness = await one<Row>(`
+      SELECT COUNT(*) AS opportunities,
+             SUM(CASE WHEN needs_reverification = 1 THEN 1 ELSE 0 END) AS opportunities_unverified
+      FROM opportunities WHERE status = 'active'
+    `);
+    Object.assign(readiness as Row, oppReadiness as Row);
     const queryTotal = Number(activity.queries_total) || 0;
     const zeroCalls = (byTool as Row[]).reduce((n, t) => n + (Number(t.zero_result_calls) || 0), 0);
     activity.zero_result_rate = queryTotal ? Math.round((1000 * zeroCalls) / queryTotal) / 10 : 0;
@@ -1133,6 +1624,91 @@ async function handleAdminApi(req: Request, env: Env, path: string): Promise<Res
 
   if (path === '/admin/api/checkouts' && req.method === 'GET') {
     return json(await loadCheckouts(env));
+  }
+
+  // ---- free opportunities ----
+  // Operators see everything, including the watchlist and the private source
+  // URLs. The buyer MCP sees a whitelist; this is the other side of that line.
+  if (path === '/admin/api/opportunities' && req.method === 'GET') {
+    const u = new URL(req.url);
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+    const status = u.searchParams.get('status') ?? 'active';
+    if (status) { clauses.push('o.status = ?'); params.push(status); }
+    const contribution = u.searchParams.get('contribution');
+    if (contribution) { clauses.push('o.contribution = ?'); params.push(contribution); }
+    const cost = u.searchParams.get('cost');
+    if (cost === 'free') clauses.push('o.is_free_confirmed = 1');
+    if (cost === 'unknown') clauses.push("o.cost_confidence = 'unknown'");
+    const verified = u.searchParams.get('verified');
+    if (verified === 'needs') clauses.push('o.needs_reverification = 1');
+    if (verified === 'done') clauses.push('o.needs_reverification = 0');
+    const q = u.searchParams.get('q');
+    if (q) {
+      clauses.push('(o.platform LIKE ? OR o.domain LIKE ? OR o.opportunity_type LIKE ? OR o.niche LIKE ? OR o.note LIKE ?)');
+      const like = `%${q}%`;
+      params.push(like, like, like, like, like);
+    }
+    const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+    const sortable = ['platform', 'contribution', 'opportunity_type', 'niche', 'cost_model', 'priority_score', 'prep_minutes', 'verification_level', 'status'];
+    const sort = sortable.includes(u.searchParams.get('sort') ?? '') ? u.searchParams.get('sort')! : 'priority_score';
+    const dir = u.searchParams.get('dir') === 'asc' ? 'ASC' : 'DESC';
+    const page = Math.max(1, Number(u.searchParams.get('page') ?? 1));
+    const perPage = 50;
+
+    const total = ((await env.DB.prepare(`SELECT COUNT(*) AS n FROM opportunities o ${where}`)
+      .bind(...params).first()) as { n: number } | null)?.n ?? 0;
+    const rows = (await env.DB.prepare(`
+      SELECT o.* FROM opportunities o ${where}
+      ORDER BY o.${sort} ${dir}, o.platform ASC
+      LIMIT ? OFFSET ?
+    `).bind(...params, perPage, (page - 1) * perPage).all()).results as Row[];
+    return json({ opportunities: rows, total, page, per_page: perPage, sort, dir: dir.toLowerCase() });
+  }
+
+  const oppPatch = /^\/admin\/api\/opportunities\/([A-Za-z0-9_.:-]+)$/.exec(path);
+  if (oppPatch && req.method === 'PATCH') {
+    const id = oppPatch[1];
+    const body = (await req.json().catch(() => ({}))) as Row;
+    const sets: string[] = [];
+    const params: unknown[] = [];
+    if (typeof body.status === 'string') {
+      if (!['active', 'watchlist', 'retired'].includes(body.status)) {
+        return json({ error: 'BAD_STATUS', allowed: ['active', 'watchlist', 'retired'] }, 400);
+      }
+      sets.push('status = ?');
+      params.push(body.status);
+    }
+    // An operator confirming a live page is the only thing that clears the
+    // template flag — nothing automatic may mark a row verified.
+    if (body.verified === true) {
+      sets.push("needs_reverification = 0, verification_level = 'Operator confirmed on the live page', last_checked = date('now')");
+    }
+    for (const field of ['cost_model', 'note', 'agent_instructions', 'link_attribute_claim'] as const) {
+      if (typeof body[field] === 'string') { sets.push(`${field} = ?`); params.push(body[field]); }
+    }
+    if (!sets.length) return json({ error: 'NOTHING_TO_UPDATE' }, 400);
+    sets.push("updated_at = datetime('now')");
+    await env.DB.prepare(`UPDATE opportunities SET ${sets.join(', ')} WHERE id = ?`).bind(...params, id).run();
+    const row = (await env.DB.prepare(`SELECT * FROM opportunities WHERE id = ?`).bind(id).first()) as Row | null;
+    if (!row) return json({ error: 'OPPORTUNITY_NOT_FOUND', id }, 404);
+    return json({ opportunity: row });
+  }
+
+  if (path === '/admin/api/submissions' && req.method === 'GET') {
+    const rows = (await env.DB.prepare(`
+      SELECT s.id, s.state, s.published_url, s.observed_rel, s.observed_indexed, s.reference,
+             s.account_owner, s.updated_at, c.canonical_url AS company_url, c.name AS company_name,
+             o.platform, o.contribution, o.submission_url
+      FROM submissions s
+      LEFT JOIN company_profiles c ON c.id = s.company_id
+      LEFT JOIN opportunities o ON o.id = s.opportunity_id
+      ORDER BY s.updated_at DESC LIMIT 200
+    `).all()).results as Row[];
+    const byState: Record<string, number> = {};
+    for (const r of rows) byState[String(r.state)] = (byState[String(r.state)] ?? 0) + 1;
+    const companies = ((await env.DB.prepare(`SELECT COUNT(*) AS n FROM company_profiles`).first()) as { n: number } | null)?.n ?? 0;
+    return json({ submissions: rows, total: rows.length, by_state: byState, companies });
   }
 
   if (path === '/admin/api/orders' && req.method === 'GET') {
@@ -1229,7 +1805,13 @@ async function handleAdminApi(req: Request, env: Env, path: string): Promise<Res
              SUM(CASE WHEN ${PAID} AND link_attribute='unknown' THEN 1 ELSE 0 END) AS attr_unknown
       FROM sites
     `).first();
-    return json(totals);
+    const opps = await env.DB.prepare(`
+      SELECT COUNT(*) AS opportunities,
+             SUM(CASE WHEN needs_reverification = 1 THEN 1 ELSE 0 END) AS opportunities_unverified,
+             SUM(CASE WHEN is_free_confirmed = 1 THEN 1 ELSE 0 END) AS opportunities_free_confirmed
+      FROM opportunities WHERE status = 'active'
+    `).first();
+    return json({ ...(totals as Row), ...(opps as Row) });
   }
 
   if (path === '/admin/api/sites' && req.method === 'GET') {

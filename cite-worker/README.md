@@ -3,11 +3,13 @@
 Cloudflare Worker serving:
 
 - **`GET /`** — minimal landing page (HTML for browsers, plaintext for agents).
-- **`POST /mcp`** — public MCP (Streamable HTTP): `help`, `estimate`, `search_publishers`, `get_publisher`, `inventory_stats`, `register_account`, `add_credits`, `account_status`, `create_campaign`, `get_writing_brief`, `submit_placement`. Paid inventory only.
+- **`POST /mcp`** — public MCP (Streamable HTTP), two tool families:
+  - *free* — `analyze_site`, `search_opportunities`, `get_opportunity`, `prepare_submission`, `record_submission`, `check_listing_status`, `list_submissions`. No account, no card.
+  - *paid* — `estimate`, `search_publishers`, `get_publisher`, `inventory_stats`, `register_account`, `add_credits`, `account_status`, `create_campaign`, `get_writing_brief`, `submit_placement`.
 - **`GET /paid`** — post-Checkout landing (“credits added — go back to your agent and say paid”).
 - **`POST /webhooks/stripe`** — credits the wallet on `checkout.session.completed` when `metadata.product=placement.sh`.
 - **`GET /llms.txt`**, **`GET /.well-known/mcp/server.json`** — agent discovery.
-- **`/admin`** — operator console (Shortlist navy/mint): **Paid inventory** and **Free inventory** as two separate tabs, plus an **Orders** tab. Submitted posts stay here; ops get mail, copy the post, and send it to the publisher themselves. Domain is visible to operators only. Guarded by Shortlist SSO / `ADMIN_TOKEN`.
+- **`/admin`** — operator console (Shortlist navy/mint): **Paid inventory**, **Opportunities** (the free catalog, where unverified rows get confirmed), **Submissions** (what customers are doing with it), and **Orders**. Submitted posts stay here; ops get mail, copy the post, and send it to the publisher themselves. Domain is visible to operators only. Guarded by Shortlist SSO / `ADMIN_TOKEN`.
 
 Public language is **publisher / placement**, never site. D1 table names stay `sites` so the live catalog does not need a migration.
 
@@ -77,25 +79,61 @@ Charge the exact listed_price (for example $195). No credit packs in v1. Test mo
 
 `npm run test:console` — renders the real console in headless Chromium against a stubbed API. Catches an inline-script syntax error, which would silently blank the whole page.
 
-## Paid and free inventory are two sections
+## Two products, two tables
 
-`sites.cost_type` splits the catalog and the console follows it:
+`sites` is **paid publishers only** since migration 010. Everything free lives in
+`opportunities` — a different thing with a different workflow, not a cheaper shelf of
+the same thing.
 
-| | Paid inventory | Free inventory |
+| | Paid inventory (`sites`) | Free opportunities (`opportunities`) |
 |---|---|---|
-| `cost_type` | `paid` (also the default for rows imported before migration 002) | `free` |
-| What it is | publishers Shortlist pays for | apply / self-publish / link-swap targets |
-| Columns | seller $, markup, listed $, margin | how to get in, link back?, submission instructions |
-| Buyer MCP | sold, when priced and `acquisition_mode=paid_placement` | never listed, never priced |
+| What it is | publishers Shortlist pays for and places on | places a **customer** gets listed, profiled or published |
+| Who acts | we do — the buyer pays and we fulfil | the customer's agent prepares; a human submits |
+| Identity | anonymised handle, domain blind until delivery | a public platform, named up front |
+| Money | seller $, markup, listed $, margin | none. No account, no card, free forever |
+| Buyer MCP | `search_publishers` etc., paid rows only | `analyze_site` → `search_opportunities` → `prepare_submission` |
 
-The tab *is* the filter — `/admin/api/sites` is always called with `cost_type`, so a
-free publisher can never appear in the paid table. The **Section** column on each row
-patches `cost_type`, which is how a site moves between the two.
+`contribution` is the axis inside the free catalog:
 
-Add a free site from the free tab (or `POST /admin/api/sites` with
-`{"cost_type":"free","acquisition_mode":"apply_editorial","agent_instructions":"…"}`).
-Free rows are stored without a seller price, so nothing can compute a listed price for
-them and `buyerWhere` keeps them off the public MCP.
+- **`article`** — the customer writes a post (guest-post blogs, Medium, dev.to, Substack).
+  These are the 499 rows migration 010 moved out of `sites`.
+- **`profile`** — the customer's company gets listed (directories, marketplaces, review sites).
+- **`program`** — the customer applies to join (partner ecosystems, awards, accelerators).
+
+### Importing the research workbook
+
+```bash
+npx tsx scripts/import-opportunities.mts --in ~/free-backlink-opportunities-2026.xlsx
+npx wrangler d1 execute cite-v0 --remote --file=migrations/010_opportunities.sql
+npx wrangler d1 execute cite-v0 --remote --file=data/opportunities.sql
+npx wrangler deploy --keep-vars
+```
+
+Migration 010 also copies the free `sites` rows into `opportunities` and archives the
+originals — it is idempotent, so re-running it will not duplicate them. The generated
+SQL is ~4 MB and takes about ten seconds; `data/` stays gitignored.
+
+The workbook is ClosedXML output (`x:`-prefixed OOXML), which ExcelJS cannot parse,
+so `scripts/xlsx-read.mts` is a small dependency-free reader written for it. Generated
+SQL carries **no** `BEGIN`/`COMMIT` — D1 rejects SQL transaction statements in an
+executed file.
+
+### What the catalog is honest about
+
+The research is a discovery corpus, not a verified list, and the schema says so:
+
+- **Cost is unverified on about half of it.** Only `is_free_confirmed = 1` rows may be
+  described as free; everything else says "not established" until someone checks.
+- **`needs_reverification = 1` on 842 of 843 imported rows.** The requirements came from
+  a class template covering many platforms of the same kind, not from that platform's
+  live form. An operator clears the flag from the console **Opportunities** tab after
+  opening the live page — that is the standing work.
+- **`link_attribute_claim` is a claim.** `check_listing_status` fetches a live listing
+  and records the `rel` it actually renders, which is the only link fact worth having.
+- **Gates only bite where the workbook set them.** Many rows have no hard gates at all,
+  so matching quality improves with verification, not with more code.
+
+Nothing on either surface may promise approval, indexing, traffic, or a dofollow link.
 
 ## Publisher enrichment (crawl, then optional Grok)
 

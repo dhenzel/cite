@@ -13,7 +13,7 @@ Node 22 + npm are the toolchain. Dependencies for both projects are installed by
 
 ### Running & testing `cite-worker` (primary)
 
-- **Tests / lint proxy:** `npm test` (from `cite-worker/`) runs `scripts/worker-test-d1.mts` — a fully self-contained suite (in-memory SQLite D1 shim + stubbed OIDC/engine). It needs no network, no secrets, and no external data. This is the authoritative check for the Worker.
+- **Tests / lint proxy:** `npm test` (from `cite-worker/`) runs the extractor, Ahrefs and `scripts/worker-test-d1.mts` suites — a fully self-contained suite (in-memory SQLite D1 shim + stubbed OIDC/engine). It needs no network, no secrets, and no external data. This is the authoritative check for the Worker.
 - **Do not rely on standalone `tsc` for the Worker.** There is no `cite-worker/tsconfig.json`; the Worker is typed/built by `wrangler` (esbuild) and its devDep is a TS 7 preview. Running `npx tsc src/index.ts` fails with `Cannot find name 'D1Database'` — that is expected (Cloudflare Worker types are only wired up under wrangler), not a real defect. Validate via `npm test` and `wrangler dev`.
 - **Run it:** `wrangler dev` talks to a **local** D1 in `--local` mode — use it so you never need Cloudflare account auth (the remote `cite-v0` DB in `wrangler.toml` lives in David's account and is unreachable here). First-time local DB setup:
   - `npx wrangler d1 execute cite-v0 --local --file=schema.sql`
@@ -36,3 +36,6 @@ Node 22 + npm are the toolchain. Dependencies for both projects are installed by
 
 - Never commit anything under `cite-mcp/data/` or a real inventory CSV — it is private publisher data by design.
 - `cite-worker/scripts/dev-seed.sql` is intentionally synthetic dev-only fixture data; do not treat it as real inventory.
+- Generated D1 import files must not contain `BEGIN`/`COMMIT` — D1 rejects SQL transaction statements in a `--file` import.
+- The console HTML and `LLMS_TXT` are TS template literals: a stray backtick in a comment inside them is a syntax error that blanks the page. `npm run test:console` catches it.
+- The free-opportunity workbook is ClosedXML output (`x:`-prefixed OOXML). ExcelJS cannot read it; `scripts/xlsx-read.mts` is the dependency-free reader written for it.

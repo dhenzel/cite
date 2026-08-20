@@ -180,12 +180,17 @@ assert((await r.json()).site.cost_type === 'free', 'and it can be moved back');
 r = await f('/admin/api/stats', { headers: auth });
 {
   const st = await r.json();
-  assert(st.paid_sites === 3 && st.free_sites === 1, 'stats follows sites between sections');
+  assert(st.paid_sites === 3, 'stats counts the paid section');
+  assert('opportunities' in st, 'stats reports the free opportunity catalog, not free sites');
 }
-assert(ADMIN_HTML.includes('id="pane-free"') && ADMIN_HTML.includes('id="rows_free"'),
-  'the console has a free inventory section of its own');
-assert(ADMIN_HTML.includes('addFreeSite') && ADMIN_HTML.includes('freeRowHtml'),
-  'the free section adds and renders free sites without price columns');
+assert(ADMIN_HTML.includes('id="pane-opp"') && ADMIN_HTML.includes('id="rows_opp"'),
+  'the console has an opportunities section');
+assert(ADMIN_HTML.includes('id="pane-sub"') && ADMIN_HTML.includes('id="rows_sub"'),
+  'the console has a submissions section');
+assert(ADMIN_HTML.includes('data-verify') && /Mark verified/.test(ADMIN_HTML),
+  'an operator can stamp an opportunity verified after checking the live page');
+assert(!ADMIN_HTML.includes('id="pane-free"') && !ADMIN_HTML.includes('freeRowHtml'),
+  'the old free-inventory section is gone — free rows live in the opportunities catalog');
 assert(!/id="fcost"/.test(ADMIN_HTML), 'the paid/free dropdown is gone — the tab is the filter');
 r = await f('/admin');
 {
@@ -213,7 +218,7 @@ assert((await r.text()).includes('claude mcp add --transport http placement'), '
 r = await worker.fetch(new Request('https://placement.sh/', { headers: { accept: 'text/html' } }), env);
 const home = await r.text();
 assert(r.status === 200 && (r.headers.get('content-type') ?? '').includes('text/html'), 'browser homepage is HTML');
-assert(home.includes('Buy publisher placements') && home.includes('Claude') && home.includes('ChatGPT') && home.includes('Grok') && home.includes('Kimi') && home.includes('Cursor') && home.includes('Hermes'), 'homepage names the product and agent buttons');
+assert(home.includes('Get your URL cited') && home.includes('Claude') && home.includes('ChatGPT') && home.includes('Grok') && home.includes('Kimi') && home.includes('Cursor') && home.includes('Hermes'), 'homepage names the product and agent buttons');
 assert(home.includes('https://placement.sh/mcp') && !home.includes('workers.dev'), 'homepage shows MCP URL, not workers.dev');
 assert(home.includes('https://shortlist.io/') && home.includes('https://shortlist.io/about-us/'), 'homepage links Shortlist and the team page');
 assert(home.includes('https://calendly.com/shortlist-businessdevelopment/15min') && home.includes('Book a 15-min call'), 'homepage links the Shortlist Calendly call');
@@ -222,7 +227,15 @@ assert(/Who runs this/.test(home) && /A <a href="https:\/\/shortlist\.io\/">Shor
 assert(home.includes('placement<span class="dot">.</span>sh'), 'wordmark uses a Shortlist-colored dot between placement and sh');
 assert(home.indexOf('Meet the team') < home.indexOf('Book a 15-min call'), 'Who runs this leads with the team, then the call');
 assert(home.includes('data-client="hermes"') && home.includes('hermes mcp add placement --url'), 'Hermes is an add-to-agent option');
-assert(!/free listing/i.test(home), 'homepage does not talk about free listings');
+assert(/Free — get listed/.test(home) && /Paid — bought placements/.test(home),
+  'homepage presents both paths');
+assert(home.indexOf('Free — get listed') < home.indexOf('Paid — bought placements'),
+  'free is presented first — it is the way in');
+assert(/cost is unconfirmed on about half/.test(home),
+  'homepage is honest that most of the free catalog is unverified');
+assert(/Nobody can promise you approval/.test(home),
+  'homepage promises no approval or link on the free path');
+assert(/bought inventory/.test(home), 'homepage still calls paid inventory what it is');
 assert(!home.includes('window.open') && !home.includes('cursor://') && !/https:\/\/(claude\.ai|chatgpt\.com|grok\.com)\//.test(home), 'agent buttons stay on-page and do not deep-link out');
 assert(home.includes('data-client="cursor"') && !home.includes('<a class="btn"'), 'Cursor is a button like the others, not an outbound link');
 r = await worker.fetch(new Request('https://www.placement.sh/llms.txt'), env);
@@ -334,12 +347,23 @@ assert(st.tier === 'registered' && st.looking === 'unlimited' && !('free_placeme
 assert(st.funded === false && st.available_cents === 0 && st.held_cents === 0, 'new account is unfunded');
 
 let h = await call('help');
-assert(h.call_first === 'estimate' && h.product === 'placement.sh', 'help orients agents');
-assert(Array.isArray(h.never) && h.never.some((x: string) => /free listing/i.test(x)), 'help forbids offering free listings');
-assert(h.playbook.some((x: string) => /email/i.test(x)), 'help says to ask the human for an email');
-assert(h.playbook.some((x: string) => /unlimited/i.test(x)), 'help says looking is unlimited');
+assert(h.product === 'placement.sh' && /analyze_site/.test(h.call_first) && /estimate/.test(h.call_first),
+  'help names the entry verb for both paths');
+assert(Array.isArray(h.never) && h.never.some((x: string) => /free opportunity as a paid placement/i.test(x)),
+  'help forbids confusing the free and paid mechanisms');
+assert(h.never.some((x: string) => /promise approval, indexing/i.test(x)),
+  'help forbids promising approval or indexing on either path');
+assert(h.never.some((x: string) => /licence|certification/i.test(x)),
+  'help forbids claiming credentials the human has not confirmed');
+assert(h.free_playbook.some((x: string) => /analyze_site/.test(x)) && h.free_playbook.some((x: string) => /never submits/i.test(x)),
+  'the free playbook starts at analyze_site and says preparation never submits');
+assert(h.free_playbook.some((x: string) => /CAPTCHA/.test(x)), 'the free playbook leaves the CAPTCHA to the human');
+assert(h.paid_playbook.some((x: string) => /email/i.test(x)), 'the paid playbook says to ask the human for an email');
+assert(h.paid_playbook.some((x: string) => /unlimited/i.test(x)), 'the paid playbook says looking is unlimited');
+assert(/exhausted/i.test(h.which_path), 'help says when to raise the paid path');
+assert(/unverified/i.test(h.data_honesty), 'help passes on how well the free catalog is verified');
 assert(h.who_runs_this?.operator === 'Shortlist' && /shortlist\.io\/about-us/.test(h.who_runs_this.team) && /calendly\.com/.test(h.who_runs_this.book_a_call), 'help names Shortlist, the team page, and a 15-min call');
-assert(h.playbook.some((x: string) => /look us up/i.test(x) && /calendly/i.test(x)), 'help tells the agent to show Shortlist and offer a call before the human pays');
+assert(h.paid_playbook.some((x: string) => /look us up/i.test(x) && /calendly/i.test(x)), 'help tells the agent to show Shortlist and offer a call before the human pays');
 
 let camp = await call('create_campaign', { target_url: 'https://buyer.test', topics: ['finance'], budget: 4000 });
 assert(camp.error === 'ACCOUNT_REQUIRED' && /email/i.test(camp.next_step), 'booking without an account asks for email, not a free listing');
@@ -1137,4 +1161,245 @@ console.log('\nall admin-key checks passed');
 
   globalThis.fetch = prevFetch2;
   console.log('\nall stripe-credits checks passed');
+}
+
+// ---------- free opportunities (SPEC §19) ----------
+// The free path has no account, so these run with no auth at all. What is being
+// checked is that the gates suppress honestly, that nothing operator-only leaks,
+// and that we never dress an unverified fact up as a verified one.
+{
+  sq.exec(`
+    INSERT INTO opportunity_playbooks (id, automation_level, agent_mode, agent_can_do, human_must_do,
+      action_recipe, safety_guardrail, recommended_action, required_form_information, copy_to_prepare,
+      assets_to_prepare, eligibility_proof, customer_only_inputs, agent_can_infer, account_verification,
+      human_handoff, login_auth, captcha, email_verification, editorial_approval, likely_blockers,
+      required_credentials, autonomy_score)
+    VALUES ('pb_test', 'High automation potential', 'Agent can prepare + attempt submission',
+      'Draft the listing copy', 'Approve and submit',
+      'OPEN -> CHECK -> DRAFT -> HUMAN SUBMITS', 'Never bypass CAPTCHA or fabricate reviews.',
+      'Create or claim profile',
+      'canonical company/product name | canonical HTTPS URL | primary category | contact email',
+      'tagline 40-60 characters | short description 150-250 characters',
+      'square logo PNG 512x512', 'website confirms identity',
+      'authorized account owner/email | approval of final claims', 'name and URL from website',
+      'Login may be required', 'Authenticate; complete CAPTCHA; approve final submission',
+      'Not identified', 'Unknown until form is opened', 'Possible', 'Not identified',
+      'CAPTCHA unknown', 'None expected initially', 60);
+
+    INSERT INTO opportunities (id, source, platform, domain, submission_url, contribution,
+      opportunity_type, best_for, niche, cost_model, cost_confidence, is_free_confirmed,
+      requires_reciprocal_link, link_attribute_claim, primary_benefit, verification_level,
+      last_checked, priority_score, priority_tier, needs_reverification, services_allowed,
+      requires_software, requires_license, eligible_entity_types, hard_exclusions, fit_question,
+      contact_email, note, agent_instructions, discovery_source, verification_source,
+      prep_minutes, requirement_confidence, agent_prompt, playbook_id, status)
+    VALUES
+      ('opp_dir', 'workbook-2026-08', 'Test Directory', 'testdir.test', 'https://testdir.test/submit',
+       'profile', 'SaaS/software directory', 'B2B software', 'Software', 'Free or freemium', 'secondary', 1,
+       0, 'claimed_dofollow', 'Buyer discovery', 'Automated page scan + secondary source',
+       '2026-08-20', 80, 'Tier 1', 1, 'Conditional', 1, 0, 'SaaS; software product',
+       'Agency without a product', 'Does the company ship software?',
+       'private@testdir.test', 'PRIVATE OPERATOR NOTE', 'PRIVATE AGENT INSTRUCTION',
+       'https://discovery.example', 'https://verify.example', 25,
+       'Opportunity-class preparation template — verify live form',
+       'Using only verified company evidence, prepare Test Directory.', 'pb_test', 'active'),
+      ('opp_licensed', 'workbook-2026-08', 'Licensed Pros', 'licensed.test', 'https://licensed.test/apply',
+       'profile', 'Niche directory: Legal', 'Licensed practitioners', 'Legal', 'Unknown — verify', 'unknown', 0,
+       0, 'unknown', 'Credibility', 'Reachability confirmed + secondary source',
+       '2026-08-20', 70, 'Tier 2', 1, 'Yes', 0, 1, 'Law firms', 'Unlicensed providers',
+       'Is the practitioner licensed?', NULL, NULL, NULL, NULL, NULL, 45,
+       'Opportunity-class preparation template — verify live form', NULL, 'pb_test', 'active'),
+      ('opp_swap', 'workbook-2026-08', 'Swap Blog', 'swap.test', 'https://swap.test/write',
+       'article', 'Community/publishing platform', 'Anyone', 'Tech', 'Free listing requiring a reciprocal link',
+       'secondary', 1, 1, 'claimed_nofollow', 'Referral traffic', 'Reachability confirmed + secondary source',
+       '2026-08-20', 60, 'Tier 3', 1, 'Yes', 0, 0, 'Any', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 30,
+       'Opportunity-class preparation template — verify live form', NULL, 'pb_test', 'active'),
+      ('opp_hidden', 'workbook-2026-08', 'Dead Directory', 'dead.test', 'https://dead.test',
+       'profile', 'General startup/business directory', 'Startups', 'Software', 'Unknown — verify', 'unknown', 0,
+       0, 'unknown', NULL, 'Secondary source only', '2026-08-20', 20, 'Research', 1, 'Yes', 0, 0,
+       NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'pb_test', 'watchlist');
+  `);
+
+  const COMPANY_HTML = `<!doctype html><html><head>
+    <title>Acme Ops | Close your books faster</title>
+    <meta name="description" content="Acme Ops is the finance platform B2B teams close their books on.">
+    <meta property="og:image" content="https://acme.test/card.png">
+    </head><body>
+    <h2>Start your free trial of the Acme platform</h2>
+    <h2>Trusted by finance teams at 200 companies</h2>
+    <p>Our AI-powered software integrates with your ledger. Read the case studies.</p>
+    </body></html>`;
+  const LISTING_HTML = `<!doctype html><html><body>
+    <h1>Acme Ops</h1><a href="https://acme.test" rel="nofollow ugc">Visit site</a>
+    </body></html>`;
+
+  const prevFetch3 = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = String(typeof input === 'string' || input instanceof URL ? input : input.url);
+    if (url.startsWith('https://acme.test')) return new Response(COMPANY_HTML, { status: 200 });
+    if (url.startsWith('https://testdir.test/listing')) return new Response(LISTING_HTML, { status: 200 });
+    if (url.startsWith('https://gone.test')) return new Response('nope', { status: 404 });
+    return new Response('not found', { status: 404 });
+  }) as typeof globalThis.fetch;
+
+  const call = async (name: string, args: Record<string, unknown>) => {
+    const res = await f('/mcp', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }),
+    });
+    const body = await res.json();
+    return { raw: body.result.content[0].text as string, data: JSON.parse(body.result.content[0].text) };
+  };
+
+  // --- analyze_site ---
+  let out = await call('analyze_site', { url: 'acme.test' });
+  const companyId = out.data.company_id as string;
+  const workspace = out.data.workspace_key as string;
+  assert(companyId?.startsWith('co_') && workspace?.startsWith('ws_'), 'analyze_site mints a company and workspace');
+  assert(out.data.profile.entity_type === 'software', 'entity type read from the page');
+  assert(out.data.profile.signals.software.value === 'yes' && out.data.profile.signals.software.basis === 'observed',
+    'software signal is observed, not assumed');
+  assert(out.data.profile.signals.ai.value === 'yes', 'AI signal read from the page');
+  assert(out.data.profile.signals.customers.value === 'yes', 'customer proof read from the page');
+  assert(out.data.profile.signals.license.value === 'unknown' && out.data.profile.signals.certification.value === 'unknown',
+    'a licence or certification is NEVER inferred from a homepage');
+  assert((out.data.could_not_determine as string[]).includes('license'), 'unknown credentials are reported, not hidden');
+
+  out = await call('analyze_site', { url: 'https://gone.test' });
+  assert(out.data.error === 'SITE_UNREACHABLE', 'an unreadable site is an error, not an invented profile');
+
+  // --- search_opportunities ---
+  out = await call('search_opportunities', { company_id: companyId });
+  let ids = (out.data.opportunities as { opportunity_id: string }[]).map((o) => o.opportunity_id);
+  assert(ids.includes('opp_dir'), 'a matching directory is offered');
+  assert(!ids.includes('opp_licensed'), 'a licence-gated platform is suppressed while the licence is unknown');
+  assert(!ids.includes('opp_hidden'), 'watchlist rows are never offered to a customer');
+  assert((out.data.missing_inputs?.asks as string[]).some((a) => /licence/i.test(a)),
+    'suppression surfaces the question to ask the human');
+  assert(out.data.suppressed_count >= 1 && out.data.suppression_reasons.length >= 1,
+    'suppressions are counted and explained');
+  assert(!/private@testdir|PRIVATE OPERATOR NOTE|PRIVATE AGENT INSTRUCTION|discovery\.example/.test(out.raw),
+    'search payload never leaks operator-only fields');
+  assert(!/secret-example|hidden-blog/.test(out.raw), 'free search never exposes paid publisher domains');
+
+  {
+    const dir = (out.data.opportunities as Record<string, unknown>[]).find((o) => o.opportunity_id === 'opp_dir')!;
+    assert(dir.link_attribute_claim === 'claimed_dofollow', 'the link attribute is labelled a claim');
+    assert(dir.needs_reverification === true, 'template-sourced requirements are flagged for re-verification');
+    const swap = (out.data.opportunities as Record<string, unknown>[]).find((o) => o.opportunity_id === 'opp_swap');
+    assert(swap && (swap.why_fit as string[]).some((w) => /reciprocal/i.test(w)),
+      'a reciprocal-link requirement is stated up front');
+  }
+
+  // The human answers the licence question; only then does the gate open.
+  out = await call('analyze_site', { url: 'acme.test', workspace_key: workspace, stated: { license: true } });
+  assert(out.data.company_id === companyId, 're-analysing the same URL updates the profile instead of forking it');
+  assert(out.data.profile.signals.license.basis === 'stated', 'a stated credential is marked as stated, not observed');
+  out = await call('search_opportunities', { company_id: companyId });
+  ids = (out.data.opportunities as { opportunity_id: string }[]).map((o) => o.opportunity_id);
+  assert(ids.includes('opp_licensed'), 'the licence-gated platform appears once the human confirms the licence');
+
+  out = await call('search_opportunities', { company_id: companyId, free_only: true });
+  ids = (out.data.opportunities as { opportunity_id: string }[]).map((o) => o.opportunity_id);
+  assert(ids.includes('opp_dir') && !ids.includes('opp_licensed'),
+    'free_only excludes rows whose cost was never established');
+
+  // --- get_opportunity ---
+  out = await call('get_opportunity', { opportunity_id: 'opp_dir', company_id: companyId });
+  assert(out.data.preparation.required_form_information.includes('canonical company/product name'),
+    'the class playbook supplies the form spec');
+  assert(out.data.execution.human_must_do === 'Approve and submit', 'the human checkpoint is explicit');
+  assert((out.data.caveats as string[]).some((c) => /promise approval/i.test(c)),
+    'every detail payload says nobody can promise approval');
+  assert(out.data.eligible_for_this_company === true, 'eligibility verdict travels with the record');
+  assert(!/PRIVATE OPERATOR NOTE|private@testdir/.test(out.raw), 'detail payload never leaks operator-only fields');
+
+  // --- prepare_submission ---
+  out = await call('prepare_submission', { opportunity_id: 'opp_dir', company_id: companyId });
+  assert(out.data.fields.some((x: { field: string; value?: string }) => x.field === 'canonical HTTPS URL' && x.value),
+    'a field the evidence answers is filled in');
+  assert((out.data.missing_inputs as string[]).includes('contact email'),
+    'a contact email is asked for, never invented');
+  assert((out.data.guardrails as string[]).some((g) => /not claim a licence/i.test(g)),
+    'the packet forbids claiming credentials the customer has not confirmed');
+  assert(/never create a duplicate/i.test(out.data.check_for_an_existing_listing as string),
+    'the packet requires searching for an existing listing first');
+  assert(typeof out.data.you_write_the_copy === 'string', 'the agent is told it writes the copy, not the Worker');
+
+  out = await call('prepare_submission', { opportunity_id: 'opp_swap', company_id: 'co_not_a_real_company' });
+  assert(out.data.error === 'COMPANY_NOT_FOUND', 'preparation needs a real company');
+
+  // --- submissions ---
+  out = await call('record_submission', { company_id: companyId, opportunity_id: 'opp_dir', state: 'submitted', reference: 'REF-1' });
+  const submissionId = out.data.submission_id as string;
+  assert(submissionId?.startsWith('sub_') && out.data.updated === false, 'first record creates a submission');
+  out = await call('record_submission', {
+    company_id: companyId, opportunity_id: 'opp_dir', state: 'live',
+    published_url: 'https://testdir.test/listing/acme',
+  });
+  assert(out.data.submission_id === submissionId && out.data.updated === true && out.data.previous_state === 'submitted',
+    'recording the same company+opportunity updates instead of duplicating');
+  out = await call('record_submission', { company_id: companyId, opportunity_id: 'opp_dir', state: 'invented' });
+  assert(out.data.error === 'BAD_STATE', 'an unknown state is rejected');
+
+  // --- check_listing_status ---
+  out = await call('check_listing_status', { submission_id: submissionId, company_id: companyId });
+  assert(out.data.link_found === true, 'the live link is found on the listing');
+  assert(out.data.observed_rel === 'nofollow ugc',
+    'the OBSERVED rel is recorded, even though the catalog claimed dofollow');
+  assert(out.data.page_indexable === true, 'indexability is observed from the page');
+
+  out = await call('list_submissions', { company_id: companyId });
+  assert(out.data.result_count === 1 && out.data.submissions[0].observed_rel === 'nofollow ugc',
+    'submissions list carries the observed attribute');
+  out = await call('list_submissions', { company_id: 'co_someone_else' });
+  assert(out.data.error === 'COMPANY_NOT_FOUND', 'another company id cannot read these submissions');
+
+  // --- the paid path is unchanged and still separate ---
+  out = await call('search_publishers', { topics: ['finance'] });
+  assert(!/opp_dir|testdir\.test/.test(out.raw), 'free opportunities never appear in paid publisher search');
+
+  // --- operator console API ---
+  r = await f('/admin/api/opportunities');
+  assert(r.status === 401, 'opportunities API needs auth');
+  r = await f('/admin/api/opportunities', { headers: auth });
+  let ops = await r.json();
+  assert(ops.total === 3 && !ops.opportunities.some((o: { status: string }) => o.status === 'watchlist'),
+    'operator list defaults to active opportunities');
+  assert(ops.opportunities.some((o: { contact_email: string }) => o.contact_email === 'private@testdir.test'),
+    'operators DO see the private contact the buyer MCP hides');
+  r = await f('/admin/api/opportunities?status=watchlist', { headers: auth });
+  assert((await r.json()).opportunities[0].id === 'opp_hidden', 'the watchlist is reachable in the console');
+  r = await f('/admin/api/opportunities?verified=needs', { headers: auth });
+  assert((await r.json()).total === 3, 'every imported row starts flagged for re-verification');
+  r = await f('/admin/api/opportunities?cost=unknown', { headers: auth });
+  assert((await r.json()).opportunities[0].id === 'opp_licensed', 'unverified-cost rows can be listed');
+
+  r = await f('/admin/api/opportunities/opp_dir', { method: 'PATCH', headers: auth, body: JSON.stringify({ verified: true }) });
+  {
+    const patched = (await r.json()).opportunity;
+    assert(patched.needs_reverification === 0 && /Operator confirmed/.test(patched.verification_level),
+      'an operator stamping a live page clears the template flag');
+  }
+  r = await f('/admin/api/opportunities/opp_dir', { method: 'PATCH', headers: auth, body: JSON.stringify({ status: 'nonsense' }) });
+  assert(r.status === 400, 'an unknown opportunity status is rejected');
+
+  r = await f('/admin/api/submissions', { headers: auth });
+  {
+    const subs = await r.json();
+    assert(subs.total === 1 && subs.submissions[0].platform === 'Test Directory',
+      'the console shows customer submissions with their platform');
+    assert(subs.submissions[0].company_url === 'https://acme.test', 'and which company they belong to');
+    assert(subs.by_state.live === 1 && subs.companies === 1, 'submission states and company count are summarised');
+  }
+  r = await f('/admin/api/stats', { headers: auth });
+  {
+    const st = await r.json();
+    assert(st.opportunities === 3, 'stats counts active opportunities');
+    assert(st.opportunities_unverified === 2, 'stats counts what still needs verifying');
+  }
+
+  globalThis.fetch = prevFetch3;
+  console.log('\nall free-opportunity checks passed');
 }

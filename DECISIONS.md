@@ -263,6 +263,37 @@ Live today: **8,968 paid** (8,820 `paid_placement` + 148 `unavailable`) and **49
 
 Next on the free side (not built): researching more free publishers and filling in `agent_instructions` for the 470-odd rows that have none.
 
+## 2026-08-20 — free placement opportunities: the second product line
+
+David: "aside from selling links, also help people get their site placed and gain visibility… I want the agent and the MCP server to do most of the work" — autonomously or alongside the customer. Source material: a research workbook of 1,051 opportunities plus two handoff documents.
+
+**Decisions taken with David:**
+
+| # | Question | Decision |
+|---|---|---|
+| 1 | Commercial model | **Free forever, lead magnet.** No account, no card, no credits. Paid placements are the upsell once free options are exhausted. |
+| 2 | One catalog or two | **Merge.** The 499 free rows in `sites` and the 843 researched rows become one `opportunities` table. The Free inventory console tab shipped earlier the same day is replaced. |
+| 3 | Scope of the first build | **The whole loop**, including per-customer submission tracking — not just search and prepare. |
+
+**The merge axis is `contribution`, because the two datasets barely overlap.** Only **12 domains** are common to the 499 and the 843. The 499 are guest-post blogs and self-publish platforms (the customer writes an *article*); the 843 are directories, marketplaces, review sites and partner programs (the customer's company gets a *profile*), plus programs they *apply* to. One table, three contribution types, one workflow each.
+
+**What the data actually supports — this constrains what we may claim:**
+
+- Cost is `Unknown — verify` on **445 of 843** (53%). Only `is_free_confirmed` rows may be called free.
+- **21 of 843** had an official source reviewed. `needs_reverification = 1` on **842 of 843**, since only one row had both its requirements and its source officially reviewed.
+- The per-row agent instructions are class templates, not per-platform research: `Agent Can Do` has **one** distinct value across all 843 rows, the requirements blob 19, the execution blob 17 — **70 combinations in total**. So a *playbook* is the unit of truth and an opportunity references one, instead of 843 copies of the same paragraph.
+- The matching gates *are* per-row (123 distinct combinations) and are the filterable surface — but many rows carry no hard gates at all, so match quality improves with verification, not with more code.
+
+**Consequently the product is opportunity-matching and preparation, not a submission list.** Enforced in code, not just in copy: every payload carries its cost confidence and verification level, `link_attribute_claim` stays a *claim* until `check_listing_status` observes the real `rel` on a live page, and nothing may promise approval, indexing, traffic or a dofollow link. Licences, certifications and memberships are **never inferred** from a homepage — the agent asks the human and passes them as `stated`, because a guess becomes a false claim on a real application.
+
+**Shipped:** migration `010_opportunities.sql` (catalog, playbooks, reference tables, company profiles, submissions, plus the idempotent merge of the 499 and archival of the source rows); `scripts/import-opportunities.mts` with `scripts/xlsx-read.mts`; seven MCP tools (`analyze_site`, `search_opportunities`, `get_opportunity`, `prepare_submission`, `record_submission`, `check_listing_status`, `list_submissions`), no account required — identity is an unguessable `company_id` minted by `analyze_site`; console **Opportunities** and **Submissions** tabs, where an operator stamping a live page is the only thing that clears the template flag.
+
+**Messaging (the same deploy, not later):** `llms.txt` said *"There are no free listings"* — false on ship, now two documented paths with free first. Same for the `initialize` instructions and `help`, which now name the entry verb for each path (`analyze_site` free, `estimate` paid) so an agent routes correctly on connect. Homepage leads with "Free — get listed", states that cost is unconfirmed on about half the catalog, and says plainly that nobody can promise approval.
+
+**Operational gotcha, worth remembering:** D1 rejects `BEGIN`/`COMMIT` in a `--file` import ("please use the state.storage.transaction() APIs"). Both generated-SQL scripts had it; both fixed. `scripts/enrich-to-sql.mts` would have failed the same way on its next run.
+
+**Still open:** the verification pass itself. 842 rows are flagged and only an operator opening the live page can clear one. That is the standing work that decides how good the matching gets, and it has no owner yet.
+
 ## Still open
 
 1. **Domain + trademark check for "Cite"** (§13.1) — **closed as a brand**: ship as placement.sh. Cite remains the repo/worker name.
@@ -273,3 +304,5 @@ Next on the free side (not built): researching more free publishers and filling 
 6. **Shortlist's own repositioning** — independent open question; not resolved by shipping Cite.
 7. **Which Shortlist mailbox / named sender** owns v1 Gmail drafts — **deferred.** Orders stay in `/admin`; operators copy and send by hand. Revisit drafts / Context Engine writes after that loop is in use.
 8. **xAI vs other LLM** — prompt and JSON shape stay; the vendor is swappable. Cursor Grok can write profiles in-chat; the 8k batch still wants an xAI API key.
+9. **Who verifies the free catalog** — 842 of 843 imported opportunities carry `needs_reverification`. Clearing one means opening the live page and confirming cost and requirements by hand, from the console Opportunities tab. Unowned.
+10. **Whether the free path converts** — the bet is that it is the way in and the paid product is the upsell. `query_log` and the Submissions tab are the instruments; nothing is proven yet.

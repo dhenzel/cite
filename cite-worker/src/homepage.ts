@@ -17,10 +17,10 @@ export const homepageHtml = (origin: string): string => {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>placement.sh — buy publisher placements so a URL gets cited</title>
-<meta name="description" content="An agent sets a budget; placement.sh books bought publisher placements so a URL can get cited in Google, ChatGPT, Perplexity, and AI Overviews.">
+<title>placement.sh — get your URL cited, free or paid</title>
+<meta name="description" content="Free: your agent finds where your company can get listed and prepares the submission. Paid: placement.sh books bought publisher placements so a URL can get cited in Google, ChatGPT, Perplexity, and AI Overviews.">
 <meta property="og:title" content="placement.sh">
-<meta property="og:description" content="Buy publisher placements so a URL gets cited. Connect your agent, set a budget, we book the campaign.">
+<meta property="og:description" content="Get your URL cited. Free — your agent finds where you can get listed and prepares it. Paid — we buy publisher placements against a budget.">
 <link rel="canonical" href="https://placement.sh/">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -182,6 +182,11 @@ export const homepageHtml = (origin: string): string => {
     font-size: 0.95rem;
   }
   footer a { color: var(--ink); }
+  .ways { display:grid; gap:1rem; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); margin:1.4rem 0; }
+  .way { border:1px solid var(--line); border-radius:12px; padding:1rem 1.1rem; background:var(--surface); }
+  .way h3 { margin:0 0 .5rem; font-size:1.02rem; }
+  .way p { margin:0 0 .6rem; line-height:1.55; }
+  .way .fine { font-size:.86rem; color:var(--muted); margin-bottom:0; }
   footer .trust { margin: 0 0 0.7rem; line-height: 1.5; }
   footer .trust a { text-decoration: underline; text-underline-offset: 0.15em; }
   footer .meta { font-size: 0.82rem; color: var(--muted); }
@@ -191,8 +196,28 @@ export const homepageHtml = (origin: string): string => {
 <body>
 <main>
   <h1>placement<span class="dot">.</span>sh</h1>
-  <p class="lede">Buy publisher placements so a URL gets cited.</p>
-  <p class="sub">You (or your agent) pick a URL, topics, and a budget. placement.sh books paid editorial placements on real publisher sites. That is bought inventory — not a guest-post mill you run yourself. Publisher domains stay hidden until a placement is delivered. Paid placements are live and indexed at T+30, or refunded.</p>
+  <p class="lede">Get your URL cited. Free where you can, paid where it is worth it.</p>
+
+  <div class="ways">
+    <div class="way">
+      <h3>Free — get listed</h3>
+      <p>Point your agent at your site. It works out what your company actually is, filters roughly 1,300 researched
+      directories, marketplaces, review platforms and partner programs down to the ones you are genuinely eligible for,
+      and prepares each submission — the fields, the copy, the assets. You log in, pass the CAPTCHA and press submit.</p>
+      <p class="fine">No account, no card. We say how well each one is verified: cost is unconfirmed on about half the
+      catalog, so your agent re-checks the live page before doing any work. Nobody can promise you approval or a link.</p>
+    </div>
+    <div class="way">
+      <h3>Paid — bought placements</h3>
+      <p>Pick a URL, topics and a budget. placement.sh books paid editorial placements on real publisher sites. That is
+      bought inventory — not a guest-post mill you run yourself. Publisher domains stay hidden until a placement is
+      delivered.</p>
+      <p class="fine">Live and indexed at T+30, or refunded. Prepaid credits, charged at the exact listed price.</p>
+    </div>
+  </div>
+
+  <p class="sub">Start free. The paid side is there when you have exhausted the free options, or when you want a specific
+  publisher and have a budget — a different mechanism, and we will say so rather than blur the two.</p>
 
   <div class="who">
     <p><strong>Who runs this.</strong> A <a href="${esc(OPERATOR_TEAM_URL)}">named ${esc(OPERATOR_NAME)} team</a> that has bought publisher placements since 2018 — people you can look up, not a new domain with a Stripe form.</p>
@@ -204,7 +229,10 @@ export const homepageHtml = (origin: string): string => {
   <h2>How to use it</h2>
   <ol>
     <li><strong>Add this MCP</strong> to Claude, ChatGPT, Grok, Kimi, Cursor, Hermes, or any agent that speaks MCP.</li>
-    <li><strong>Ask the agent to estimate</strong> — URL, topics, budget. No card required to look. The agent should tell you this is Shortlist before you pay.</li>
+    <li><strong>For the free path</strong>, ask the agent to analyse your site. It will come back with what it could not
+    work out — answer those, especially anything about licences or memberships, then let it match and prepare.</li>
+    <li><strong>For the paid path</strong>, ask the agent to estimate — URL, topics, budget. No card required to look.
+    The agent should tell you this is Shortlist before you pay.</li>
     <li><strong>To buy</strong>, the agent asks for a contact email, then opens a Stripe Checkout link for prepaid credits.</li>
   </ol>
 

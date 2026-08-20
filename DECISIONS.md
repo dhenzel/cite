@@ -337,6 +337,61 @@ David: "aside from selling links, also help people get their site placed and gai
 
 **Still open:** the verification pass itself. 842 rows are flagged and only an operator opening the live page can clear one. That is the standing work that decides how good the matching gets, and it has no owner yet.
 
+## 2026-08-20 — crawl the whole catalog, and let a live page read count as verification
+
+David: crawl everything — all the paid inventory and all the free opportunities — so
+every row is checked against the real site, properly categorised, and the MCP can hand
+an agent something solid. Run it overnight and check the work afterwards.
+
+**Where it runs: David's Mac.** A Claude Code cloud session has no egress at all — its
+proxy answers 403 to CONNECT for every host, so a crawl from there records 9,000 false
+"dead site" results. Re-confirmed this session. The split is: the machinery and the
+gates are built here, the Mac crawls, and the results are audited from here afterwards
+through the Cloudflare MCP, which does reach D1.
+
+**Decisions taken with David:**
+
+| # | Question | Decision |
+|---|---|---|
+| 1 | Where the crawl runs | **His Mac**, under `caffeinate -i`, via one resumable driver. |
+| 2 | Does an automated read count as verification | **Yes** — an LLM reading the actual submission page clears `needs_reverification`, stamped with `verified_at` and `verify_source`. That is a real improvement on a class template, and better than 1,549 rows waiting on manual work that was never going to happen. |
+| 3 | LLM access | xAI key now exists; `grok-4-fast` reads the pages. |
+
+**What an automated read may not do.** The value of this only holds if the machine is
+honest about its limits, so these are enforced in `rowToSql` and covered by tests:
+
+- A **404/410 or parked page** demotes a row to the watchlist. A **403, 429 or timeout
+  does not** — firewalled is not gone, and silently dropping live inventory is the
+  worse error.
+- **Credential gates are never written by a crawl.** A page cannot establish a licence,
+  certification or membership; what it states is kept as text for a human.
+- A **free claim with no supporting quote** from the page is downgraded to unknown. The
+  parser rejects a reply that identified nothing rather than letting an empty read
+  clear the flag.
+- Where the page **contradicts the workbook**, both are kept and `verify_note` explains
+  the clash. It reaches agents as `caution` and operators as a ⚠, rather than one
+  silently overwriting the other.
+
+**Verified facts now outrank the class template everywhere** — cost line, scoring,
+`get_opportunity`, and the fields `prepare_submission` asks for — and every payload
+names its source: *read from the live page on 21 Aug* versus *class template, confirm
+before you use it*. `free_only` respects a read that found no free path, even though
+the workbook claimed one. Operator confirmations leave the same provenance trail, which
+a self-check gate enforces.
+
+**Shipped:** migration `011_verified_opportunities.sql`; `VERIFY_PROMPT_V1` + `parsePageRead`
+in `enrich-extract.ts`; `scripts/verify-opportunities.mts`; `scripts/overnight.mts`
+(windows of 250, pushes to D1 after each, one retry sweep, stops itself after two barren
+windows, `--dry-run` and `--max-llm-calls`); `scripts/verify-run.mts` (coverage reported,
+seven gates enforced). 391 assertions.
+
+**Preflight refuses the wrong machine** — egress, LLM key and wrangler auth are checked
+before anything is touched, and all the problems print at once. This is the lesson from
+the ten-of-ten `fetch_failed` crawl, encoded so nobody repeats it at 8,000 sites.
+
+**Honest expectations:** 4–7 hours, ~25–45k HTTP requests, ~10k LLM calls, and 15–25%
+fetch failures across 9,000 domains. Coverage is reported, never graded.
+
 ## Still open
 
 1. **Domain + trademark check for "Cite"** (§13.1) — **closed as a brand**: ship as placement.sh. Cite remains the repo/worker name.
@@ -348,4 +403,5 @@ David: "aside from selling links, also help people get their site placed and gai
 7. **Which Shortlist mailbox / named sender** owns v1 Gmail drafts — **deferred.** Orders stay in `/admin`; operators copy and send by hand. Revisit drafts / Context Engine writes after that loop is in use.
 8. **xAI vs other LLM** — prompt and JSON shape stay; the vendor is swappable. Cursor Grok can write profiles in-chat; the 8k batch still wants an xAI API key.
 9. **Who verifies the free catalog** — 842 of 843 imported opportunities carry `needs_reverification`. Clearing one means opening the live page and confirming cost and requirements by hand, from the console Opportunities tab. Unowned.
-10. **Whether the free path converts** — the bet is that it is the way in and the paid product is the upsell. `query_log` and the Submissions tab are the instruments; nothing is proven yet.
+10. **Whether the crawl's own numbers hold up.** The overnight run has not been executed yet. Coverage, the failure rate, and whether `grok-4-fast` reads submission pages well enough are all estimates until the 50-item pilot says otherwise.
+11. **Whether the free path converts** — the bet is that it is the way in and the paid product is the upsell. `query_log` and the Submissions tab are the instruments; nothing is proven yet.

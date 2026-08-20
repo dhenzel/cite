@@ -190,11 +190,20 @@ export function judge(opp: Row, evidence: Evidence | null): Verdict {
   }
 
   // Transparent, explainable scoring — no hidden weights.
+  const f = facts(opp);
   let score = (int(opp.priority_score) ?? 40) * 0.5;
-  if (opp.is_free_confirmed) { score += 15; reasons.push('cost confirmed free or freemium'); }
-  if (str(opp.cost_confidence) === 'unknown') { score -= 10; reasons.push('cost not established — verify on the live page before working on it'); }
+  if (f.verified) { score += 10; reasons.push(`requirements ${f.verifiedHow}`); }
+  if (f.isFree) {
+    score += 15;
+    reasons.push(f.verified ? 'the live page states a free path' : 'cost confirmed free or freemium');
+  } else if (f.verified) {
+    score -= 15;
+    reasons.push('the live page shows no free path');
+  }
+  if (!f.verified && str(opp.cost_confidence) === 'unknown') { score -= 10; reasons.push('cost not established — verify on the live page before working on it'); }
   if (opp.requires_reciprocal_link) { score -= 8; reasons.push('a reciprocal link back is expected'); }
   if (opp.needs_reverification) { score -= 5; }
+  if (f.caution) reasons.push(f.caution);
 
   if (evidence) {
     const haystack = `${str(opp.relevant_industries) ?? ''} ${str(opp.niche) ?? ''} ${str(opp.platform_audience) ?? ''} ${str(opp.best_for) ?? ''}`.toLowerCase();
@@ -212,12 +221,69 @@ export function judge(opp: Row, evidence: Evidence | null): Verdict {
   };
 }
 
+// ---------- verified facts vs the class template ----------
+// Migration 011 added what a live page read found, per row. The workbook's
+// playbook describes a CLASS of opportunity; a verified row describes this one.
+// Verified always wins, and every payload says which it answered from — an agent
+// should treat "we read the page in August" and "platforms like this usually
+// want" very differently.
+
+const parseJsonList = (v: unknown): string[] => {
+  if (!v) return [];
+  try {
+    const parsed = JSON.parse(String(v));
+    return Array.isArray(parsed) ? parsed.map(String).filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+};
+
+export type Facts = {
+  verified: boolean;
+  verifiedOn?: string;
+  /** How it was verified, in words an agent can pass to a human. */
+  verifiedHow?: string;
+  isFree: boolean;
+  costModel?: string;
+  requirements: string[];
+  eligibility: string[];
+  mechanism?: string;
+  caution?: string;
+};
+
+export function facts(opp: Row): Facts {
+  const verifiedAt = str(opp.verified_at);
+  const source = str(opp.verify_source);
+  const on = verifiedAt?.slice(0, 10);
+  return {
+    verified: !!verifiedAt,
+    verifiedOn: on,
+    verifiedHow: !verifiedAt ? undefined
+      : source === 'operator' ? `confirmed by a placement.sh operator on ${on}`
+        : source === 'llm-page-read-v1' ? `read from the live page on ${on}`
+          : `verified on ${on}`,
+    // A verified read wins even when it says "not free" — that is the whole point.
+    isFree: opp.verified_is_free != null ? !!opp.verified_is_free : !!opp.is_free_confirmed,
+    costModel: str(opp.verified_cost_model) ?? str(opp.cost_model),
+    requirements: parseJsonList(opp.verified_requirements),
+    eligibility: parseJsonList(opp.verified_eligibility),
+    mechanism: str(opp.verified_submission_mechanism),
+    caution: str(opp.verify_note),
+  };
+}
+
 // ---------- public serialization ----------
 // contact_email, note, agent_instructions and the source URLs are operator-only
 // and must never reach /mcp. This is a whitelist, like the paid side's `pub()`.
 
 const costLine = (opp: Row): string => {
-  const model = str(opp.cost_model) ?? 'not established';
+  const f = facts(opp);
+  const model = f.costModel ?? 'not established';
+  if (f.verified) {
+    return f.isFree
+      ? `${model} — ${f.verifiedHow}`
+      : `${model} — ${f.verifiedHow}; there is no free path`;
+  }
   if (opp.is_free_confirmed) return `${model} (from a secondary source — re-check the live page)`;
   if (str(opp.cost_confidence) === 'unknown') return `${model} — treat as unknown until the live page is checked`;
   return model;
@@ -233,14 +299,17 @@ export function publicOpportunity(opp: Row, verdict?: Verdict): Row {
     best_for: opp.best_for,
     niche: opp.niche || undefined,
     cost: costLine(opp),
-    cost_confidence: opp.cost_confidence,
-    is_free_confirmed: !!opp.is_free_confirmed,
+    cost_confidence: facts(opp).verified ? 'read from the live page' : opp.cost_confidence,
+    is_free_confirmed: facts(opp).isFree,
+    facts_from: facts(opp).verifiedHow
+      ?? 'class template — open the submission URL and confirm before doing the work',
     requires_reciprocal_link: !!opp.requires_reciprocal_link,
     link_attribute_claim: opp.link_attribute_claim ?? 'unknown',
     expected_benefit: opp.primary_benefit || undefined,
     verification_level: opp.verification_level,
     last_checked: opp.last_checked || undefined,
     needs_reverification: !!opp.needs_reverification,
+    caution: facts(opp).caution,
     tier: opp.priority_tier,
     estimated_prep_minutes: int(opp.prep_minutes),
   };
@@ -265,6 +334,12 @@ export function publicOpportunityDetail(opp: Row, playbook: Row | null, verdict?
       requires: GATE_KEYS.filter((k) => opp[GATE_COLUMN[k]]).map((k) => GATE_LABEL[k]),
       question_to_answer_first: opp.fit_question || undefined,
     },
+    preparation_source: facts(opp).requirements.length
+      ? facts(opp).verifiedHow
+      : 'a class template covering platforms of this kind — confirm against the live form',
+    verified_requirements: facts(opp).requirements.length ? facts(opp).requirements : undefined,
+    verified_eligibility: facts(opp).eligibility.length ? facts(opp).eligibility : undefined,
+    how_to_submit: facts(opp).mechanism,
     preparation: playbook ? {
       recommended_action: playbook.recommended_action,
       required_form_information: playbook.required_form_information,
@@ -290,12 +365,13 @@ export function publicOpportunityDetail(opp: Row, playbook: Row | null, verdict?
     } : undefined,
     agent_prompt: opp.agent_prompt || undefined,
     caveats: [
-      opp.needs_reverification
-        ? 'These requirements come from a class template, not from this platform\'s live form. Open the submission URL and confirm before doing the work.'
-        : 'Requirements were read from an official source, but confirm the live form before submitting.',
+      facts(opp).verified
+        ? `These requirements were ${facts(opp).verifiedHow}. Pages change — glance at the form before you fill it in.`
+        : 'These requirements come from a class template, not from this platform\'s live form. Open the submission URL and confirm before doing the work.',
       'The link attribute is what the source claimed, not something we verified. Record what the live page actually renders.',
       'Nobody can promise approval, indexing, or traffic here.',
-    ],
+      facts(opp).caution,
+    ].filter(Boolean),
   };
 }
 
@@ -308,6 +384,7 @@ export type Packet = {
   opportunity_id: string;
   platform: string;
   submission_url?: string;
+  fields_from: string;
   recommended_action?: string;
   fields: { field: string; value?: string; source: string }[];
   copy_to_write: string[];
@@ -334,7 +411,9 @@ export function preparePacket(opp: Row, playbook: Row | null, evidence: Evidence
     'short description': evidence.summary,
   };
 
-  const required = splitList(playbook?.required_form_information);
+  // A page we actually read beats a template describing platforms of this kind.
+  const f = facts(opp);
+  const required = f.requirements.length ? f.requirements : splitList(playbook?.required_form_information);
   const fields = required.map((field) => {
     const value = known[field.toLowerCase()];
     return value
@@ -350,7 +429,10 @@ export function preparePacket(opp: Row, playbook: Row | null, evidence: Evidence
   return {
     opportunity_id: String(opp.id),
     platform: String(opp.platform),
-    submission_url: str(opp.submission_url),
+    submission_url: str(opp.final_url) ?? str(opp.submission_url),
+    fields_from: f.requirements.length
+      ? `the real form — ${f.verifiedHow}`
+      : 'a class template — confirm against the real form before you fill it in',
     recommended_action: str(playbook?.recommended_action),
     fields,
     copy_to_write: splitList(playbook?.copy_to_prepare),
@@ -359,11 +441,12 @@ export function preparePacket(opp: Row, playbook: Row | null, evidence: Evidence
     human_must_do: splitList(playbook?.human_handoff).concat(splitList(playbook?.customer_only_inputs)),
     agent_prompt: str(opp.agent_prompt),
     guardrails: [
+      f.caution,
       str(playbook?.safety_guardrail) ?? 'Never bypass a CAPTCHA, impersonate a user, or submit a misleading listing.',
       'Do not claim a licence, certification, membership, customer count or award the customer has not confirmed.',
       'Search for an existing listing before creating one — claim or improve it instead of duplicating.',
       'Preparation is not submission. A human logs in and presses the button.',
-    ],
+    ].filter(Boolean) as string[],
   };
 }
 

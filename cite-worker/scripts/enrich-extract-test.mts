@@ -6,6 +6,8 @@ import {
   extractTitles,
   leaksDomain,
   parseLlmProfile,
+  parsePageRead,
+  costDisagreement,
   parseRobots,
   pathDisallowed,
   scrub,
@@ -114,6 +116,69 @@ assert.equal(parseLlmProfile('not json', domain), null, 'rejects garbage');
   assert.deepEqual(selectSites(all, new Set(['a', 'b', 'c', 'd'])), [],
     'everything done means nothing to crawl');
   assert.equal(all[0].id, 'a', 'selectSites does not reorder the caller\'s array');
+}
+
+// ---------- opportunity page reads ----------
+// This parser is the gate between a language model and a claim a customer will
+// act on, so the tests are about what it REFUSES as much as what it accepts.
+{
+  const good = parsePageRead(`{
+    "page_kind": "submission_form",
+    "cost_model": "Free to submit; $49 for a featured slot",
+    "is_free": true,
+    "paid_upgrade": true,
+    "requirements": ["product name", "URL", "logo 512x512", "short description"],
+    "eligibility": ["must be a live product", "no affiliate sites"],
+    "submission_mechanism": "form",
+    "reciprocal_link_required": false,
+    "still_matches_type": true,
+    "evidence": "Submitting your tool is free. Featured placement is $49."
+  }`);
+  assert.ok(good, 'a complete reply parses');
+  assert.equal(good!.is_free, true, 'a free claim with a quote survives');
+  assert.equal(good!.paid_upgrade, true, 'the paid upgrade is kept');
+  assert.equal(good!.requirements.length, 4, 'requirements come through');
+
+  // "unknown" is a real answer everywhere, and must not become a string.
+  const unsure = parsePageRead(`{
+    "page_kind": "listing",
+    "cost_model": "unknown",
+    "is_free": "unknown",
+    "paid_upgrade": "unknown",
+    "requirements": [],
+    "eligibility": ["unknown"],
+    "submission_mechanism": "unknown",
+    "reciprocal_link_required": "unknown",
+    "still_matches_type": true,
+    "evidence": ""
+  }`);
+  assert.ok(unsure, 'an honest "we could not tell" reply still parses');
+  assert.equal(unsure!.is_free, null, '"unknown" becomes null, never a truthy string');
+  assert.equal(unsure!.cost_model, null, 'the literal word unknown is not stored as a cost');
+  assert.deepEqual(unsure!.eligibility, [], '"unknown" is stripped out of lists');
+
+  // A free claim with nothing to back it is the exact claim we must not repeat.
+  const unbacked = parsePageRead(`{
+    "page_kind": "listing", "cost_model": "Free", "is_free": true, "paid_upgrade": false,
+    "requirements": [], "eligibility": [], "submission_mechanism": "unknown",
+    "reciprocal_link_required": false, "still_matches_type": true, "evidence": ""
+  }`);
+  assert.equal(unbacked!.is_free, null, 'a free claim with no quote is downgraded to unknown');
+
+  assert.equal(parsePageRead('I could not read that page.'), null, 'prose is rejected');
+  assert.equal(parsePageRead('{ "page_kind": "nonsense", "requirements": [] }'), null,
+    'an unrecognised page that taught us nothing is not evidence');
+  assert.equal(parsePageRead('{"page_kind":"garbled","cost_model":"$99 per listing"}')?.page_kind, 'unknown',
+    'an unknown page_kind is normalised but a real fact is still kept');
+
+  // Disagreements are surfaced, not silently overwritten.
+  assert.match(
+    costDisagreement({ ...good!, is_free: false, cost_model: '$99' }, true) ?? '',
+    /Catalog says free/, 'a catalog-says-free vs page-says-paid clash is reported');
+  assert.match(costDisagreement(good!, true) ?? '', /paid upgrade/,
+    'free-with-an-upsell is called out');
+  assert.equal(costDisagreement({ ...good!, is_free: null, paid_upgrade: null }, true), null,
+    'unknown does not manufacture a disagreement');
 }
 
 console.log('ok: enrich extractors');

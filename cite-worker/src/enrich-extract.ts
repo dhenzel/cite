@@ -321,3 +321,134 @@ export function extractPage(html: string, domain: string): CrawlExtract {
     feedUrl: href ? resolveUrl(href, domain) : null,
   };
 }
+
+// ---------- opportunity page read (migration 011) ----------
+// The free catalog's requirements came from a class template covering many
+// platforms of the same kind. This reads the ACTUAL submission page instead.
+//
+// The prompt's job is mostly to make "unknown" the comfortable answer. A wrong
+// answer here does not degrade a search ranking — it goes into a real
+// application a customer submits under their own name.
+
+export const VERIFY_PROMPT_V1 = `You are reading a submission or listing page to record what it ACTUALLY says.
+
+This replaces a guess. Everything you return is shown to a business owner who will
+act on it, so an invented detail is worse than an admitted gap. Whenever the page
+does not clearly state something, return "unknown" — that is a correct answer here,
+not a failure.
+
+Return ONLY JSON (no markdown) with this shape:
+{
+  "page_kind": "submission_form | pricing | listing | signup | article | error | parked | unrelated | unknown",
+  "cost_model": "what it costs to be listed, in the page's own terms, or unknown",
+  "is_free": true | false | "unknown",
+  "paid_upgrade": true | false | "unknown",
+  "requirements": ["what the form or page actually asks for; [] if the page does not say"],
+  "eligibility": ["stated rules about who may apply; [] if none stated"],
+  "submission_mechanism": "form | email | account | application | api | none_found | unknown",
+  "reciprocal_link_required": true | false | "unknown",
+  "still_matches_type": true | false | "unknown",
+  "evidence": "a short quote from the page supporting cost_model, or empty"
+}
+
+Rules:
+- Never infer a professional licence, certification or membership requirement. If
+  the page mentions one, put it in "eligibility" verbatim; never invent one.
+- "is_free": true only if a free path is stated. A free trial, a freemium tier or
+  "free to apply" with a paid listing is is_free=false with paid_upgrade=true.
+- If the page is an error, a parking page, or clearly unrelated to submissions,
+  say so in page_kind and leave the rest unknown.
+- Quote, do not paraphrase, in "evidence".`;
+
+export type PageRead = {
+  page_kind: string;
+  cost_model: string | null;
+  is_free: boolean | null;
+  paid_upgrade: boolean | null;
+  requirements: string[];
+  eligibility: string[];
+  submission_mechanism: string | null;
+  reciprocal_link_required: boolean | null;
+  still_matches_type: boolean | null;
+  evidence: string | null;
+};
+
+/** "unknown" and absent both become null — a tri-state the writer can respect. */
+const triState = (v: unknown): boolean | null => {
+  if (v === true || v === false) return v;
+  if (typeof v === 'string') {
+    const s = v.trim().toLowerCase();
+    if (s === 'true' || s === 'yes') return true;
+    if (s === 'false' || s === 'no') return false;
+  }
+  return null;
+};
+
+const cleanList = (v: unknown, limit = 12): string[] =>
+  Array.isArray(v)
+    ? v.map((x) => String(x).trim()).filter((x) => x && x.toLowerCase() !== 'unknown').slice(0, limit)
+    : [];
+
+const cleanText = (v: unknown): string | null => {
+  const s = String(v ?? '').trim();
+  return !s || s.toLowerCase() === 'unknown' ? null : s;
+};
+
+const PAGE_KINDS = new Set([
+  'submission_form', 'pricing', 'listing', 'signup', 'article',
+  'error', 'parked', 'unrelated', 'unknown',
+]);
+
+/** Parse the model's reply. Returns null when it is not usable as evidence. */
+export function parsePageRead(raw: string): PageRead | null {
+  const start = raw.indexOf('{');
+  const end = raw.lastIndexOf('}');
+  if (start < 0 || end <= start) return null;
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(raw.slice(start, end + 1)) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+
+  const kind = String(parsed.page_kind ?? 'unknown').trim().toLowerCase();
+  const read: PageRead = {
+    page_kind: PAGE_KINDS.has(kind) ? kind : 'unknown',
+    cost_model: cleanText(parsed.cost_model),
+    is_free: triState(parsed.is_free),
+    paid_upgrade: triState(parsed.paid_upgrade),
+    requirements: cleanList(parsed.requirements),
+    eligibility: cleanList(parsed.eligibility),
+    submission_mechanism: cleanText(parsed.submission_mechanism),
+    reciprocal_link_required: triState(parsed.reciprocal_link_required),
+    still_matches_type: triState(parsed.still_matches_type),
+    evidence: cleanText(parsed.evidence),
+  };
+
+  // A page we could not identify, that told us nothing, is not evidence. Storing
+  // it would clear the re-verification flag while adding no knowledge.
+  const learnedSomething = read.cost_model !== null
+    || read.is_free !== null
+    || read.requirements.length > 0
+    || read.eligibility.length > 0;
+  if (read.page_kind === 'unknown' && !learnedSomething) return null;
+
+  // A free claim with no supporting quote is exactly the claim we must not repeat.
+  if (read.is_free === true && !read.evidence) read.is_free = null;
+
+  return read;
+}
+
+/** Does the page contradict what the catalog recorded? Operators see this note. */
+export function costDisagreement(read: PageRead, catalogSaysFree: boolean): string | null {
+  if (catalogSaysFree && read.is_free === false) {
+    return `Catalog says free; the live page says otherwise${read.cost_model ? ` (${read.cost_model})` : ''}.`;
+  }
+  if (!catalogSaysFree && read.is_free === true) {
+    return 'Catalog did not confirm a free path; the live page states one.';
+  }
+  if (read.is_free === true && read.paid_upgrade === true) {
+    return 'Free to list, but the page pushes a paid upgrade — say so before recommending it.';
+  }
+  return null;
+}

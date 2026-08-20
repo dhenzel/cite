@@ -6,12 +6,15 @@
   "scripts": {
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",
-    "test": "tsx scripts/enrich-extract-test.mts && tsx scripts/refresh-ahrefs-test.mts && tsx scripts/worker-test-d1.mts",
+    "test": "tsx scripts/enrich-extract-test.mts && tsx scripts/refresh-ahrefs-test.mts && tsx scripts/verify-opportunities-test.mts && tsx scripts/worker-test-d1.mts",
     "ahrefs:refresh": "tsx scripts/refresh-ahrefs.mts",
     "test:enrich": "tsx scripts/enrich-extract-test.mts",
     "enrich": "tsx scripts/enrich-content.mts",
     "enrich:apply-llm": "tsx scripts/apply-llm-profiles.mts",
-    "test:console": "tsx scripts/console-browser-test.mjs"
+    "test:console": "tsx scripts/console-browser-test.mjs",
+    "verify:opportunities": "tsx scripts/verify-opportunities.mts",
+    "overnight": "tsx scripts/overnight.mts",
+    "verify:run": "tsx scripts/verify-run.mts"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",

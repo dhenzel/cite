@@ -135,6 +135,76 @@ The research is a discovery corpus, not a verified list, and the schema says so:
 
 Nothing on either surface may promise approval, indexing, traffic, or a dofollow link.
 
+## The overnight run — crawl everything, verify it, check the work
+
+One command crawls every paid publisher and reads every free opportunity's live
+page, pushing to D1 as it goes:
+
+```bash
+cd cite-worker
+export XAI_API_KEY=...                       # console.x.ai — not Cursor, not SuperGrok
+caffeinate -i npx tsx scripts/overnight.mts --dry-run     # what it would do, spends nothing
+caffeinate -i npx tsx scripts/overnight.mts --limit 50    # pilot: 50 of each, then read them back
+caffeinate -i npx tsx scripts/overnight.mts               # the whole catalog
+```
+
+**`caffeinate -i` is not decoration.** Without it the Mac sleeps and the run dies
+around 2am with nothing in the log to explain it.
+
+**Run the pilot first.** `--limit 50` costs a few minutes and catches a bad prompt
+before it has run ten thousand times. Read the results back through the MCP and the
+console before committing to the full pass.
+
+What it does:
+
+- **Pass A** crawls paid publishers via `enrich-content.mts` (robots-aware, resumable).
+- **Pass B** reads each opportunity's live submission page via `verify-opportunities.mts`
+  and records what it actually says.
+- Works in windows of 250 and pushes each window to D1 before starting the next, so a
+  crash costs one window rather than the night. Re-running resumes.
+- Stops itself after two consecutive windows with no successes — that is systemic
+  (network gone, key expired, host rate-limiting), and burning eight hours writing
+  failures helps nobody.
+- Ends by running `verify-run.mts` and exits non-zero if a gate fails.
+
+Expect **4–7 hours** and **15–25% fetch failures** across 9,000 domains — 403s,
+timeouts and dead sites are normal at this scale, not a broken run. `--max-llm-calls`
+caps the xAI spend; `--skip-publishers` / `--skip-opportunities` run one pass alone.
+
+### Preflight refuses the wrong machine
+
+The driver checks egress, the LLM key and wrangler auth before touching anything, and
+prints all the problems at once. This exists because a Claude Code cloud session
+*looks* like it can crawl — its proxy answers every CONNECT with 403, so all 9,000
+sites come back as `fetch_failed` and the catalog fills with false "dead site"
+records. Run it from a laptop or a Cursor cloud agent.
+
+### What a page read may and may not conclude
+
+- `needs_reverification` is cleared **only** when a page read actually succeeded, and
+  the row then carries `verified_at` and `verify_source`. Nothing is verified anonymously.
+- A **404/410 or a parked page** demotes a row to the watchlist. A **403, 429 or timeout
+  does not** — firewalled is not gone, and dropping live inventory is the worse error.
+- **Licence, certification and membership gates are never written by a crawl.** A page
+  cannot establish a credential; whatever it states goes into `verified_eligibility` as
+  text for a human to read.
+- A free claim with no supporting quote from the page is downgraded to unknown.
+- Where the page contradicts the workbook, both are kept and `verify_note` says so —
+  it surfaces on the MCP as `caution` and in the console with a ⚠.
+
+### Checking the work
+
+```bash
+npx tsx scripts/verify-run.mts            # human-readable
+npx tsx scripts/verify-run.mts --json     # for a machine
+```
+
+Coverage is reported, never graded — reaching 78% of a 9,000-site catalog is a normal
+night. What *fails* the run is a claim the data cannot support: a publisher domain
+leaked into buyer-visible text, a row calling itself verified with no provenance, a
+dead link still on the customer-facing catalog, or a site demoted merely for being
+firewalled.
+
 ## Publisher enrichment (crawl, then optional Grok)
 
 Do not crawl from the public Worker. **The crawl needs open egress and will not

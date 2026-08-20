@@ -1085,14 +1085,22 @@ const CONTRIB_LABEL = { article: 'article', profile: 'profile', program: 'progra
 
 function oppRowHtml(o) {
   const stats_ = ['active','watchlist','retired'];
-  const cost = o.is_free_confirmed
-    ? '<span class="pill ok">' + esc(o.cost_model || 'free') + '</span>'
-    : (o.cost_confidence === 'unknown'
-      ? '<span class="pill warn">not established</span>'
-      : esc(o.cost_model || '–'));
+  // A live read wins over the workbook, including when it is bad news.
+  const readFree = o.verified_is_free === 1 || o.verified_is_free === true;
+  const readPaid = o.verified_is_free === 0 || o.verified_is_free === false;
+  const costText = o.verified_cost_model || o.cost_model || '–';
+  const cost = readPaid
+    ? '<span class="pill warn">' + esc(costText) + '</span>'
+    : (readFree || o.is_free_confirmed
+      ? '<span class="pill ok">' + esc(costText) + '</span>'
+      : (o.cost_confidence === 'unknown'
+        ? '<span class="pill warn">not established</span>'
+        : esc(costText)));
+  const dead = o.liveness === 'dead' ? '<div class="sub">dead link (' + esc(String(o.http_status || '')) + ')</div>' : '';
   const conf = o.needs_reverification
     ? '<span class="pill warn">template — verify</span>'
-    : '<span class="pill ok">verified ' + esc((o.last_checked || '').slice(0, 10)) + '</span>';
+    : '<span class="pill ok">' + (o.verify_source === 'llm-page-read-v1' ? 'live read ' : 'operator ')
+      + esc(String(o.verified_at || o.last_checked || '').slice(0, 10)) + '</span>';
   const url = o.submission_url || ('https://' + (o.domain || ''));
   return '<tr data-id="' + esc(o.id) + '">' +
     '<td class="domain"><a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(o.platform) + '</a>' +
@@ -1100,7 +1108,9 @@ function oppRowHtml(o) {
     '<td>' + esc(CONTRIB_LABEL[o.contribution] || o.contribution || '') + '</td>' +
     '<td>' + esc(o.opportunity_type || '–') + '</td>' +
     '<td>' + esc(o.niche || '–') + '</td>' +
-    '<td>' + cost + (o.requires_reciprocal_link ? '<div class="sub">wants a link back</div>' : '') + '</td>' +
+    '<td>' + cost + (o.requires_reciprocal_link ? '<div class="sub">wants a link back</div>' : '')
+      + (o.verify_note ? '<div class="sub" title="' + esc(o.verify_note) + '">⚠ ' + esc(String(o.verify_note).slice(0, 44)) + '…</div>' : '')
+      + dead + '</td>' +
     '<td>' + esc((o.link_attribute_claim || 'unknown').replace('claimed_', 'claimed ')) + '</td>' +
     '<td class="num">' + (o.priority_score ?? '–') + '</td>' +
     '<td class="num">' + (o.prep_minutes != null ? o.prep_minutes + 'm' : '–') + '</td>' +

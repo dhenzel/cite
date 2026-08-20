@@ -1381,6 +1381,8 @@ console.log('\nall admin-key checks passed');
     const patched = (await r.json()).opportunity;
     assert(patched.needs_reverification === 0 && /Operator confirmed/.test(patched.verification_level),
       'an operator stamping a live page clears the template flag');
+    assert(patched.verified_at && patched.verify_source === 'operator',
+      'and leaves the same provenance trail the crawler does');
   }
   r = await f('/admin/api/opportunities/opp_dir', { method: 'PATCH', headers: auth, body: JSON.stringify({ status: 'nonsense' }) });
   assert(r.status === 400, 'an unknown opportunity status is rejected');
@@ -1402,4 +1404,113 @@ console.log('\nall admin-key checks passed');
 
   globalThis.fetch = prevFetch3;
   console.log('\nall free-opportunity checks passed');
+}
+
+// ---------- verified facts beat the class template (migration 011) ----------
+// The workbook told us what platforms of a KIND ask for. A live page read tells
+// us what THIS one asks for. When both exist the payload must answer from the
+// page, and must say which it used — an agent should weigh them differently.
+{
+  sq.exec(`
+    INSERT INTO opportunities (id, source, platform, domain, submission_url, contribution,
+      opportunity_type, niche, cost_model, cost_confidence, is_free_confirmed, link_attribute_claim,
+      verification_level, priority_score, priority_tier, needs_reverification, playbook_id, status,
+      verified_cost_model, verified_is_free, verified_requirements, verified_eligibility,
+      verified_submission_mechanism, verified_at, verify_source, verify_note, liveness, final_url)
+    VALUES
+      ('opp_read', 'workbook-2026-08', 'Read Directory', 'read.test', 'https://read.test/submit',
+       'profile', 'SaaS/software directory', 'Software', 'Free or freemium', 'secondary', 1,
+       'claimed_dofollow', 'Live page read 2026-08-21', 75, 'Tier 1', 0, 'pb_test', 'active',
+       'Free to list; $79 to be featured', 1,
+       '["company name","live URL","logo 400x400","founder email"]',
+       '["must have a public pricing page"]',
+       'form', '2026-08-21T02:10:00.000Z', 'llm-page-read-v1',
+       'Free to list, but the page pushes a paid upgrade — say so before recommending it.',
+       'live', 'https://read.test/submit-your-tool'),
+      ('opp_notfree', 'workbook-2026-08', 'Turns Out Paid', 'paid.test', 'https://paid.test/submit',
+       'profile', 'SaaS/software directory', 'Software', 'Free or freemium', 'secondary', 1,
+       'unknown', 'Live page read 2026-08-21', 70, 'Tier 2', 0, 'pb_test', 'active',
+       '$149 one-time listing fee', 0, '["company name"]', NULL, 'form',
+       '2026-08-21T02:11:00.000Z', 'llm-page-read-v1',
+       'Catalog says free; the live page says otherwise ($149 one-time listing fee).', 'live', NULL);
+  `);
+
+  // This block runs after the fetch stub is restored, so give it a company
+  // profile directly rather than crawling for one.
+  const gateKeys = ['software', 'ai', 'open_source', 'integration', 'location',
+    'customers', 'launch', 'visuals', 'license', 'certification', 'membership'];
+  const evidence = {
+    canonical_url: 'https://acme.test', name: 'Acme Ops', summary: 'Finance platform.',
+    topics: ['finance', 'software'], entity_type: 'software',
+    signals: Object.fromEntries(gateKeys.map((k) => [k, k === 'software'
+      ? { value: 'yes', basis: 'observed' }
+      : { value: 'unknown', basis: 'unknown' }])),
+  };
+  const companyId = 'co_verified_test';
+  sq.prepare(`INSERT INTO company_profiles (id, workspace_key, canonical_url, name, evidence, created_at, updated_at)
+              VALUES (?, 'ws_verified_test', 'https://acme.test', 'Acme Ops', ?, datetime('now'), datetime('now'))`)
+    .run(companyId, JSON.stringify(evidence));
+
+  const call = async (name: string, args: Record<string, unknown>) => {
+    const res = await f('/mcp', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }),
+    });
+    const body = await res.json();
+    return { raw: body.result.content[0].text as string, data: JSON.parse(body.result.content[0].text) };
+  };
+
+  let out = await call('get_opportunity', { opportunity_id: 'opp_read' });
+  assert(/read from the live page on 2026-08-21/.test(out.data.facts_from),
+    'a verified row says the facts came from the live page, with the date');
+  assert(/read from the live page on 2026-08-21/.test(out.data.cost),
+    'the cost line stops hedging once the page has been read');
+  assert(out.data.cost_confidence === 'read from the live page', 'confidence reflects the read');
+  assert(out.data.preparation_source === 'read from the live page on 2026-08-21',
+    'preparation names the live page as its source');
+  assert(out.data.verified_requirements.includes('founder email'),
+    'the real form fields are exposed');
+  assert(out.data.how_to_submit === 'form', 'the submission mechanism read from the page is exposed');
+  assert(!(out.data.caveats as string[]).some((c) => /class template/.test(c)),
+    'a verified row no longer warns about a class template');
+  assert((out.data.caveats as string[]).some((c) => /Pages change/.test(c)),
+    'but it still tells the agent to glance at the form');
+  assert((out.data.caveats as string[]).some((c) => /paid upgrade/.test(c)),
+    'the upsell warning travels with the record');
+
+  out = await call('get_opportunity', { opportunity_id: 'opp_swap' });
+  assert(/class template/.test(out.data.facts_from),
+    'an unverified row still admits it is answering from a template');
+  out = await call('get_opportunity', { opportunity_id: 'opp_dir' });
+  assert(/confirmed by a placement\.sh operator/.test(out.data.facts_from),
+    'an operator-confirmed row says a person confirmed it, not that a crawler read it');
+
+  // prepare_submission must ask for what the real form asks for.
+  out = await call('prepare_submission', { opportunity_id: 'opp_read', company_id: companyId });
+  assert(out.data.fields_from === 'the real form — read from the live page on 2026-08-21',
+    'the packet says the fields came from the real form');
+  assert((out.data.fields as { field: string }[]).some((x) => x.field === 'logo 400x400'),
+    'the packet asks for the size the live form actually wants');
+  assert((out.data.guardrails as string[]).some((g) => /paid upgrade/.test(g)),
+    'the packet leads with the disagreement the crawl found');
+  assert(out.data.submission_url === 'https://read.test/submit-your-tool',
+    'the packet points at where the submission URL actually redirected to');
+
+  // A page read that found no free path must override the workbook's guess.
+  out = await call('search_opportunities', { company_id: companyId, free_only: true });
+  {
+    const ids = (out.data.opportunities as { opportunity_id: string }[]).map((o) => o.opportunity_id);
+    assert(ids.includes('opp_read'), 'a verified free listing still shows under free_only');
+    assert(!ids.includes('opp_notfree'),
+      'a row the live page proved is paid is excluded from free_only, whatever the workbook said');
+  }
+  out = await call('get_opportunity', { opportunity_id: 'opp_notfree' });
+  assert(out.data.is_free_confirmed === false,
+    'the live read overrides the workbook even when it is bad news');
+  assert(/no free path/.test(out.data.cost), 'and the payload says so plainly');
+  assert(/Catalog says free/.test(out.data.caution ?? ''),
+    'the contradiction is surfaced rather than quietly resolved');
+
+  console.log('\nall verified-facts checks passed');
 }

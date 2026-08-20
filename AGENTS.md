@@ -39,3 +39,4 @@ Node 22 + npm are the toolchain. Dependencies for both projects are installed by
 - Generated D1 import files must not contain `BEGIN`/`COMMIT` — D1 rejects SQL transaction statements in a `--file` import.
 - The console HTML and `LLMS_TXT` are TS template literals: a stray backtick in a comment inside them is a syntax error that blanks the page. `npm run test:console` catches it.
 - The free-opportunity workbook is ClosedXML output (`x:`-prefixed OOXML). ExcelJS cannot read it; `scripts/xlsx-read.mts` is the dependency-free reader written for it.
+- **This environment cannot crawl.** The proxy answers 403 to CONNECT for every external host, so a crawl started here records thousands of false `fetch_failed` / dead-site results. `scripts/overnight.mts` preflights for exactly this and refuses to start. Crawls run from a laptop or a Cursor cloud agent.

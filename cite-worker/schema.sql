@@ -288,8 +288,25 @@ CREATE TABLE IF NOT EXISTS opportunities (
   playbook_id TEXT,
   status TEXT NOT NULL DEFAULT 'active',   -- 'active' | 'watchlist' | 'retired'
   created_at TEXT,
-  updated_at TEXT
+  updated_at TEXT,
+
+  -- migration 011: what a live page read found, per row. The playbook above is
+  -- the class-level fallback; these override it when present.
+  verified_cost_model TEXT,
+  verified_is_free INTEGER,
+  verified_requirements TEXT,             -- JSON
+  verified_eligibility TEXT,              -- JSON
+  verified_submission_mechanism TEXT,
+  verified_at TEXT,
+  verify_source TEXT,                     -- 'llm-page-read-v1' | 'operator'
+  verify_note TEXT,
+  liveness TEXT,                          -- live | dead | blocked | unknown
+  http_status INTEGER,
+  final_url TEXT,
+  crawl_checked_at TEXT
 );
+CREATE INDEX IF NOT EXISTS idx_opp_verified ON opportunities(verified_at);
+CREATE INDEX IF NOT EXISTS idx_opp_liveness ON opportunities(liveness);
 CREATE INDEX IF NOT EXISTS idx_opp_status ON opportunities(status);
 CREATE INDEX IF NOT EXISTS idx_opp_contribution ON opportunities(contribution);
 CREATE INDEX IF NOT EXISTS idx_opp_niche ON opportunities(niche);

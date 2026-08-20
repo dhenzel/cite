@@ -1062,7 +1062,9 @@ async function runTool(env: Env, name: string, args: Row, account: Account | nul
       if (args.contribution) { clauses.push('contribution = ?'); params.push(args.contribution); }
       if (args.niche) { clauses.push('niche LIKE ?'); params.push(`%${args.niche}%`); }
       if (args.tier) { clauses.push('priority_tier = ?'); params.push(args.tier); }
-      if (args.free_only) clauses.push('is_free_confirmed = 1');
+      // A live page read overrides the workbook: if we opened the page and it
+      // has no free path, "free only" must not return it.
+      if (args.free_only) clauses.push('(verified_is_free = 1 OR (verified_is_free IS NULL AND is_free_confirmed = 1))');
       if (args.max_prep_minutes != null) { clauses.push('(prep_minutes IS NULL OR prep_minutes <= ?)'); params.push(args.max_prep_minutes); }
       if (args.text) {
         clauses.push('(platform LIKE ? OR opportunity_type LIKE ? OR niche LIKE ? OR platform_audience LIKE ? OR best_for LIKE ?)');
@@ -1682,7 +1684,13 @@ async function handleAdminApi(req: Request, env: Env, path: string): Promise<Res
     // An operator confirming a live page is the only thing that clears the
     // template flag — nothing automatic may mark a row verified.
     if (body.verified === true) {
-      sets.push("needs_reverification = 0, verification_level = 'Operator confirmed on the live page', last_checked = date('now')");
+      sets.push(
+        "needs_reverification = 0",
+        "verification_level = 'Operator confirmed on the live page'",
+        "last_checked = date('now')",
+        "verified_at = datetime('now')",
+        "verify_source = 'operator'",
+      );
     }
     for (const field of ['cost_model', 'note', 'agent_instructions', 'link_attribute_claim'] as const) {
       if (typeof body[field] === 'string') { sets.push(`${field} = ?`); params.push(body[field]); }

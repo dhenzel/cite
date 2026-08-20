@@ -100,4 +100,19 @@ Two ways to get Grok profiles:
    ```
 2. **Unattended 8k batch.** Create an xAI API key at [console.x.ai](https://console.x.ai/), add it to Cursor as a Cloud Agent **Runtime Secret** named `XAI_API_KEY` ([Secrets & Network](https://cursor.com/docs/cloud-agent/security-network)), and run `--llm`.
 
-`get_writing_brief` already reads `summary` / `writes_about` / `recent_titles`. Deploy after 009 so audience / tone / do / dont show up. Ahrefs keywords are a separate pass.
+`get_writing_brief` already reads scrubbed `summary` / `writes_about`. Exact recent headlines stay off the buyer MCP so a description cannot be googled back to the publisher. Deploy after 009 so audience / tone / do / dont show up.
+
+## Ahrefs overview refresh
+
+Do not put an Ahrefs key on the public Worker. Use the REST **Batch Analysis** API from a machine with `AHREFS_API_KEY` in the environment (Cursor Runtime Secret, or your laptop). The hosted Ahrefs MCP is for interactive lookups only.
+
+Lite is 100k units/month. One overview row (`domain_rating`, `org_traffic`, `org_keywords`, `refdomains`, `backlinks`, `ahrefs_rank`, `org_cost`) is about 29 units, so a full 8k pass does not fit. Default is the top 3,000 paid sites by score, `mode=subdomains` (apex `domain` mode often returns 0 traffic).
+
+```bash
+cd cite-worker
+AHREFS_API_KEY=… npx tsx scripts/refresh-ahrefs.mts \
+  --sites data/paid-sites.json --out data/ahrefs.jsonl --sql data/ahrefs.sql
+npx wrangler d1 execute cite-v0 --remote --file=data/ahrefs.sql
+```
+
+`data/ahrefs.jsonl` and `data/ahrefs.sql` are gitignored (publisher domains). Resume skips site_ids already in the JSONL. `--limit` / `--budget-units` cap spend.

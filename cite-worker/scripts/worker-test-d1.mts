@@ -100,6 +100,7 @@ const home = await r.text();
 assert(r.status === 200 && (r.headers.get('content-type') ?? '').includes('text/html'), 'browser homepage is HTML');
 assert(home.includes('Buy publisher placements') && home.includes('Claude') && home.includes('ChatGPT') && home.includes('Grok') && home.includes('Kimi') && home.includes('Cursor'), 'homepage names the product and agent buttons');
 assert(home.includes('https://placement.sh/mcp') && !home.includes('Shortlist'), 'homepage shows MCP URL and stays quiet on ownership');
+assert(!/claim a free/i.test(home) && /no free listings/i.test(home), 'homepage says there are no free listings');
 assert(!home.includes('window.open') && !home.includes('cursor://') && !/https:\/\/(claude\.ai|chatgpt\.com|grok\.com)\//.test(home), 'agent buttons stay on-page and do not deep-link out');
 assert(home.includes('data-client="cursor"') && !home.includes('<a class="btn"'), 'Cursor is a button like the others, not an outbound link');
 r = await worker.fetch(new Request('https://www.placement.sh/llms.txt'), env);
@@ -113,12 +114,13 @@ assert(r.status === 200, 'mcp.placement.sh serves POST /mcp');
 
 console.log('\nall checks passed');
 
-// ---- free sites, metrics ladder, accounts, admin MCP ----
+// ---- paid-only inventory, accounts, admin MCP ----
 sq.exec(`
   UPDATE sites SET dr=88, da=54, tf=40, cf=50, traffic=25000 WHERE id='cs_aaa111bbb222';
   INSERT INTO sites (id, domain, niche, seller_price, markup, listed_price, cite_score, traffic_band, status, link_attribute, acquisition_mode, cost_type, agent_instructions)
   VALUES ('cs_free00self01','free-platform.test','Tech',0,1.6,0,70,'250k+/mo','active','nofollow','self_serve','free','Register and publish directly.'),
-         ('cs_exchange0001','swap-site.test','Tech',0,1.6,0,60,'1k-5k/mo','active','dofollow','link_exchange','free',NULL);
+         ('cs_exchange0001','swap-site.test','Tech',0,1.6,0,60,'1k-5k/mo','active','dofollow','link_exchange','free',NULL),
+         ('cs_freebiz00001','free-newsletter.test','Business',0,1.6,0,95,'250k+/mo','active','sponsored','self_serve','free','Looks huge, is a $0 subdomain.');
 `);
 
 const call = async (tool: string, args: Record<string, unknown> = {}, key?: string) => {
@@ -137,48 +139,65 @@ assert(!('da' in g) && !('tf' in g) && !('traffic' in g), 'exact DA/TF/traffic a
 assert(typeof g.metrics_attribution === 'string', 'Ahrefs attribution present');
 assert(g.placement_score === 88 && !('cite_score' in g) && !('site_id' in g), 'public fields use publisher/placement_score');
 assert(!JSON.stringify(g).includes('secret-example'), 'domain still blind in get_publisher');
+assert(!('cost_type' in g) && !('acquisition_mode' in g), 'buyer payload does not advertise free/self-serve modes');
 
-// free-site filters + link_exchange exclusion
-let s = await call('search_publishers', { cost_type: 'free' });
-const ids = s.publishers.map((x: { publisher_id: string }) => x.publisher_id);
-assert(ids.includes('cs_free00self01'), 'free self_serve publisher returned by cost_type filter');
-assert(!ids.includes('cs_exchange0001'), 'link_exchange excluded from search by default');
-s = await call('search_publishers', {});
-assert(!s.publishers.map((x: { publisher_id: string }) => x.publisher_id).includes('cs_exchange0001'), 'link_exchange excluded from default search');
+// free sites never appear on the buyer MCP
+let s = await call('search_publishers', {});
+let ids = s.publishers.map((x: { publisher_id: string }) => x.publisher_id);
+assert(!ids.includes('cs_free00self01') && !ids.includes('cs_exchange0001') && !ids.includes('cs_freebiz00001'),
+  'free / self-serve / link-exchange publishers are hidden from search');
+assert(ids.includes('cs_aaa111bbb222'), 'paid publishers still search');
+s = await call('search_publishers', { cost_type: 'free' } as Record<string, unknown>);
+ids = s.publishers.map((x: { publisher_id: string }) => x.publisher_id);
+assert(!ids.includes('cs_free00self01'), 'cost_type=free filter is gone; free sites stay hidden');
+g = await call('get_publisher', { publisher_id: 'cs_freebiz00001' });
+assert(g.error === 'PUBLISHER_NOT_FOUND', 'get_publisher hides free inventory instead of showing a $0 profile');
+
+let toolsListRes = await f('/mcp', { method: 'POST', headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) });
+const toolNames = (await toolsListRes.json()).result.tools.map((t: { name: string }) => t.name);
+assert(!toolNames.includes('claim_free_placement'), 'claim_free_placement is not advertised');
+assert(toolNames.includes('create_campaign') && toolNames.includes('register_account'), 'paid booking tools remain');
+
+let gone = await call('claim_free_placement', { publisher_id: 'cs_free00self01', target_url: 'https://buyer.test/pricing' });
+assert(gone.error === 'TOOL_REMOVED', 'old clients calling claim_free_placement get TOOL_REMOVED');
 
 // anonymous cap
+s = await call('search_publishers', {});
 assert(s.result_limit === 10, `anonymous result cap is 10 (got ${s.result_limit})`);
+assert(typeof s.next_step === 'string' && /register_account/.test(s.next_step), 'anonymous search tells the agent to register, not to claim free');
 
 // accounts
 let a = await call('register_account', { email: 'not-an-email' });
 assert(a.error === 'INVALID_EMAIL', 'bad email rejected');
 a = await call('register_account', { email: 'Agent@Example.com' });
 assert(typeof a.api_key === 'string' && a.api_key.startsWith('ck_'), 'register_account mints a key');
+assert(a.tier === 'registered', 'new accounts are registered, not a free-placement tier');
+assert(!JSON.stringify(a).includes('free placement'), 'register_account does not promise free placements');
 const apiKey = a.api_key;
 const again = await call('register_account', { email: 'agent@example.com' });
 assert(again.api_key === apiKey, 'same email returns the same key (case-insensitive)');
 s = await call('search_publishers', {}, apiKey);
 assert(s.result_limit === 50, 'account key raises result cap to 50');
 let st = await call('account_status', {}, apiKey);
-assert(st.tier === 'free' && st.free_placements_remaining === 10, 'account_status reports quota');
+assert(st.tier === 'registered' && !('free_placements_remaining' in st), 'account_status has no free-placement quota');
 
 let h = await call('help');
 assert(h.call_first === 'estimate' && h.product === 'placement.sh', 'help orients agents');
+assert(Array.isArray(h.never) && h.never.some((x: string) => /free listing/i.test(x)), 'help forbids offering free listings');
+assert(h.playbook.some((x: string) => /email/i.test(x)), 'help says to ask the human for an email');
+
 let camp = await call('create_campaign', { target_url: 'https://buyer.test', topics: ['finance'], budget: 4000 });
-assert(camp.error === 'INSUFFICIENT_CREDIT', 'paid campaign is a credit stub');
+assert(camp.error === 'ACCOUNT_REQUIRED' && /email/i.test(camp.next_step), 'booking without an account asks for email, not a free listing');
+camp = await call('create_campaign', { target_url: 'https://buyer.test', topics: ['finance'], budget: 4000 }, apiKey);
+assert(camp.error === 'INSUFFICIENT_CREDIT' && /do not offer/i.test(camp.next_step), 'INSUFFICIENT_CREDIT forbids a free-listing substitute');
+
 let est = await call('estimate', { topics: ['finance'], budget: 4000, target_url: 'https://buyer.test/pricing' });
 assert(est.target_url === 'https://buyer.test/pricing' && Array.isArray(est.plan), 'estimate accepts target_url');
-
-// free placement claim
-let c = await call('claim_free_placement', { publisher_id: 'cs_free00self01', target_url: 'https://buyer.test/pricing' });
-assert(c.error === 'ACCOUNT_REQUIRED', 'claim requires an account');
-c = await call('claim_free_placement', { publisher_id: 'cs_free00self01', target_url: 'https://buyer.test/pricing' }, apiKey);
-assert(c.claimed === true && c.domain === 'free-platform.test', 'self_serve claim releases the domain so the agent can publish');
-assert(typeof c.agent_instructions === 'string', 'claim returns the agent playbook');
-c = await call('claim_free_placement', { publisher_id: 'cs_aaa111bbb222', target_url: 'https://buyer.test/x' }, apiKey);
-assert(c.error === 'NOT_FREE_INVENTORY', 'paid publisher rejects a free claim');
-c = await call('claim_free_placement', { publisher_id: 'cs_exchange0001', target_url: 'https://buyer.test/x' }, apiKey);
-assert(c.error === 'PUBLISHER_UNAVAILABLE', 'link_exchange publisher cannot be claimed');
+assert(!/claim_free|cost_type/i.test(JSON.stringify(est)), 'estimate does not advertise free inventory');
+const estBiz = await call('estimate', { topics: ['Business'], budget: 300 });
+assert((estBiz.total_planned_placements ?? 0) === 0 || estBiz.total_planned_spend > 0,
+  'estimate does not count $0 free sites as placements');
 
 // query log populated
 const logged = sq.prepare('SELECT COUNT(*) AS n FROM query_log').get() as { n: number };

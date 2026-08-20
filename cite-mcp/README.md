@@ -1,7 +1,7 @@
 # cite-mcp — Cite v0 prototype
 
-The free read tier of Cite (SPEC §6/§15 steps 1–2) as a working MCP server over
-the real Shortlist inventory, with blind placements enforced in code.
+Local stdio MCP over the Shortlist inventory. The hosted buyer surface
+(`cite-worker`) is paid placements only — this prototype matches that filter.
 
 ## Setup
 

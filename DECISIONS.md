@@ -120,6 +120,14 @@ Recorded in `SPEC-PAID-PATH.md`. Settled in that session:
 
 `create_campaign` remaining a stub is now an explicit gap this spec closes (build order in SPEC-PAID-PATH §5).
 
+## 2026-08-18 — paid inventory only (no free listings)
+
+David, after a Grok session on upcoach.com: a score-87 / DR-92 **$0 newsletter subdomain** showed up as a "huge free slot," and after signup the agent offered to **claim a free Business listing** instead of waiting for Stripe. That is the wrong product.
+
+**Decision:** buyer MCP is paid placements only. Hide `cost_type=free`, `listed_price=0`, and non-`paid_placement` modes from `estimate` / `search_publishers` / `get_publisher` / `inventory_stats`. Remove `claim_free_placement` (`TOOL_REMOVED` if an old client still calls it). `help`, `register_account`, `account_status`, and `create_campaign` must tell the agent: looking is free → ask the human for an email → register → prepaid credits. Never offer Medium / Substack / self-serve as a consolation prize.
+
+Rows stay in D1 for the operator console. This supersedes the 2026-08-17 "free placements stay free and are the trial" call.
+
 ## Still open
 
 1. **Domain + trademark check for "Cite"** (§13.1) — **closed as a brand**: ship as placement.sh. Cite remains the repo/worker name.

@@ -1,13 +1,7 @@
-// Curated free self-serve platforms (SPEC §17). Shortlist's database is a
-// paid-outreach database: it contains almost no free self-publish platforms.
-// These are the ones an agent can register on and publish to by itself, so
-// they're the trial inventory — no card, no operator, no publisher outreach.
-//
-// Honesty notes carried into the data:
-//  - Most self-serve platforms give nofollow/UGC links, so Google link equity
-//    is minimal. Their value is AI-citation surface: answer engines cite these
-//    domains heavily (SPEC §1 "why now"). link_attribute records the truth.
-//  - Metrics are NULL until the Ahrefs refresh runs — never invented here.
+// Operator-only seed: curated self-serve platforms (Medium, Substack, …).
+// Public MCP no longer sells these (2026-08-18 — paid inventory only).
+// Do not re-run against production unless operators explicitly want the
+// rows in D1 for console review. Buyer tools ignore cost_type=free.
 //
 // Usage: npx tsx src/seed-free-platforms.ts [--sql]
 import Database from 'better-sqlite3';

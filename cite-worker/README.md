@@ -73,4 +73,31 @@ Charge the exact listed_price (for example $195). No credit packs in v1. Test mo
 
 ## Tests
 
-`npm test` — Worker handler against in-memory SQLite: public leak checks, publisher-named tools, discovery URLs, admin auth.
+`npm test` — extractors plus the Worker handler against in-memory SQLite: public leak checks, publisher-named tools, discovery URLs, admin auth.
+
+## Publisher enrichment (crawl, then optional Grok)
+
+Do not crawl from the public Worker. From a machine with open egress:
+
+```bash
+# paid-sites.json is {id,domain,cite_score,niche}[], highest score first. Gitignored.
+npx tsx scripts/enrich-content.mts --sites data/paid-sites.json --out data/enrich.jsonl
+# later, when you have an xAI *API* key (console.x.ai — not SuperGrok, not Cursor):
+XAI_API_KEY=... npx tsx scripts/enrich-content.mts --sites data/paid-sites.json --out data/enrich.jsonl --llm --force
+npx tsx scripts/enrich-to-sql.mts --in data/enrich.jsonl --out data/enrich.sql
+npx wrangler d1 execute cite-v0 --remote --file=migrations/009_enrich_profile.sql
+npx wrangler d1 execute cite-v0 --remote --file=data/enrich.sql
+npx wrangler deploy --keep-vars
+```
+
+**Cursor × Grok is not an API key.** Picking Grok in Cursor (this cloud agent included) bills the Cursor plan. It does not set `XAI_API_KEY` and cannot call `https://api.x.ai`. SuperGrok / grok.com is also not API access.
+
+Two ways to get Grok profiles:
+
+1. **This chat (Cursor subscription).** The agent writes `enrich_prompt_v1` JSON from crawl extracts. Then:
+   ```bash
+   npx tsx scripts/apply-llm-profiles.mts --in data/enrich.jsonl --profiles data/llm-profiles.jsonl --out data/llm-merged.jsonl
+   ```
+2. **Unattended 8k batch.** Create an xAI API key at [console.x.ai](https://console.x.ai/), add it to Cursor as a Cloud Agent **Runtime Secret** named `XAI_API_KEY` ([Secrets & Network](https://cursor.com/docs/cloud-agent/security-network)), and run `--llm`.
+
+`get_writing_brief` already reads `summary` / `writes_about` / `recent_titles`. Deploy after 009 so audience / tone / do / dont show up. Ahrefs keywords are a separate pass.

@@ -229,6 +229,24 @@ David: the placement.sh homepage should use the Shortlist-colored dot between �
 
 **Decision:** wordmark is `placement.sh` with the period in Shortlist mint (`#30D2AD`). Who runs this leads with [the team](https://shortlist.io/about-us/), then a plain link to [Book a 15-min call](https://calendly.com/shortlist-businessdevelopment/15min) (the homepage widget URL, not an embedded popup), then shortlist.io. The same three links go out over MCP (`help.who_runs_this`, initialize instructions, booking `next_step`) so the agent can offer a call in the chat — optional, not required to pay. No auto-book, no Calendly embed. Inter + navy ink so the mint period reads as Shortlist, not a generic teal.
 
+## 2026-08-20 — crawl-first enrichment while Ahrefs is pending
+
+David: enrich publishers with what they write about and recent posts so an agent can draft; sign up for Ahrefs in parallel.
+
+**Decision:** do the crawl (+ optional Grok) now. Do not wait on Ahrefs. Fat profile belongs on `get_writing_brief` / `get_publisher` detail — not a keyword dump on `search_publishers`.
+
+- Script: `cite-worker/scripts/enrich-content.mts` (open egress, not the public Worker). Homepage + RSS, honour `Disallow: /`, brand-scrub public fields.
+- `--llm` calls xAI (`grok-4-fast` by default) with `enrich_prompt_v1` when `XAI_API_KEY` is set. Without a key, store crawl-only `summary` / `writes_about` / `recent_titles` (`source=crawl-v1`) so briefs improve immediately.
+- **Cursor Grok ≠ xAI API.** Selecting Grok in Cursor (including this cloud agent) uses the Cursor plan. It does not inject `XAI_API_KEY`. SuperGrok / grok.com is not API access either. Unattended `--llm` needs a key from [console.x.ai](https://console.x.ai/) stored as a Cursor Cloud Agent Runtime Secret named `XAI_API_KEY`. Profiles written in this chat are applied with `scripts/apply-llm-profiles.mts`.
+- D1 migration `009_enrich_profile.sql` adds audience / tone / post_shape / typical_length_words / do_fit / dont_fit / summary_private / enrich_status. `summary_private` is operator-only.
+- Highest `cite_score` first. Resume skips `enrich_status=ok`. Ahrefs ranking keywords stay a second pass.
+
+## 2026-08-20 — buyer MCP descriptions must not identify the publisher
+
+David: the site description must not leak which publisher it is via MCP.
+
+**Decision:** `search_publishers` / `get_publisher` / `get_writing_brief` re-scrub every public text field at read time and drop the field if a domain or registered-name token remains. Exact `recent_post_titles` stay off the buyer MCP (they google the masthead). Writing-brief `example_angles` come from topics, not quoted headlines. `summary_private` stays operator-only.
+
 ## Still open
 
 1. **Domain + trademark check for "Cite"** (§13.1) — **closed as a brand**: ship as placement.sh. Cite remains the repo/worker name.
@@ -238,4 +256,4 @@ David: the placement.sh homepage should use the Shortlist-colored dot between �
 5. **Build team** — who drives the v1 build (agent-driven by David, Shortlist devs, or a hire).
 6. **Shortlist's own repositioning** — independent open question; not resolved by shipping Cite.
 7. **Which Shortlist mailbox / named sender** owns v1 Gmail drafts — **deferred.** Orders stay in `/admin`; operators copy and send by hand. Revisit drafts / Context Engine writes after that loop is in use.
-8. **xAI vs other LLM** for enrichment if Grok API access is awkward — prompt and JSON shape stay; the vendor is swappable.
+8. **xAI vs other LLM** — prompt and JSON shape stay; the vendor is swappable. Cursor Grok can write profiles in-chat; the 8k batch still wants an xAI API key.

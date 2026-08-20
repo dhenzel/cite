@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import worker, { type Env } from '../src/index.js';
+import { ADMIN_HTML } from '../src/admin-ui.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const sq = new BetterSqlite3(':memory:');
@@ -13,8 +14,13 @@ sq.exec(`
   INSERT INTO sites (id, domain, contact_email, niche, seller_price, markup, listed_price, cite_score, traffic_band, status, link_attribute)
   VALUES ('cs_aaa111bbb222', 'secret-example.com', 'owner@secret-example.com', 'Business', 100, 1.6, 160, 88, '10k–50k/mo', 'active', 'unknown'),
          ('cs_ccc333ddd444', 'hidden-blog.net', 'ed@hidden-blog.net', 'Tech', 50, 1.6, 80, 62, '1k–5k/mo', 'active', 'unknown');
-  INSERT INTO site_content (site_id, summary, writes_about) VALUES
-    ('cs_aaa111bbb222', 'B2B finance guides.', '["finance","b2b"]');
+  INSERT INTO site_content (site_id, summary, writes_about, recent_titles, audience, tone, post_shape, typical_length_words, do_fit, dont_fit, enrich_status, source)
+  VALUES
+    ('cs_aaa111bbb222', 'Secret Example covers B2B finance guides for operators at secret-example.com.', '["finance","b2b","Secret Example"]',
+     '["How operators run monthly close","Invoice terms that get paid"]',
+     'Operators who need practical finance ops writing.', 'practitioner', 'how-to', 900,
+     'Include a concrete close or invoicing example.', 'Do not pitch crypto trading.',
+     'ok', 'crawl-v1');
   INSERT INTO checkout_sessions (session_id, api_key, email, amount_cents, checkout_url, expires_at, created_at)
   VALUES ('cs_open_unpaid', 'ak_ghost', 'buyer@example.com', 19500,
           'https://checkout.stripe.com/c/pay/cs_test_open', datetime('now', '+1 day'), datetime('now', '-2 hours'));
@@ -66,6 +72,25 @@ d = await r.json();
   const names = d.sites.map((s: { domain: string }) => s.domain);
   assert(names.join() === [...names].sort().join(), 'admin list sorts by domain asc');
   assert(d.sort === 'domain' && d.dir === 'asc', 'admin list echoes the sort');
+  const secret = d.sites.find((s: { id: string }) => s.id === 'cs_aaa111bbb222');
+  assert(secret?.enrich_status === 'ok' && secret?.content_source === 'crawl-v1', 'admin list includes crawl status');
+}
+r = await f('/admin/api/sites/cs_aaa111bbb222');
+assert(r.status === 401, 'admin site detail 401 without token');
+r = await f('/admin/api/sites/cs_doesnotexist1', { headers: auth });
+assert(r.status === 404, 'admin site detail 404 for unknown id');
+r = await f('/admin/api/sites/cs_aaa111bbb222', { headers: auth });
+d = await r.json();
+{
+  const s = d.site;
+  assert(s.domain === 'secret-example.com' && s.contact_email === 'owner@secret-example.com', 'admin detail returns the domain');
+  assert(typeof s.summary === 'string' && s.summary.includes('B2B finance') && s.summary.includes('Secret Example'), 'admin detail shows the crawled summary with the brand');
+  assert(Array.isArray(s.writes_about) && s.writes_about.includes('finance') && s.writes_about.includes('Secret Example'), 'admin detail parses topics');
+  assert(Array.isArray(s.recent_titles) && s.recent_titles.includes('How operators run monthly close'), 'admin detail shows crawled titles');
+  assert(s.audience && s.tone === 'practitioner' && s.post_shape === 'how-to' && s.typical_length_words === 900, 'admin detail shows audience, tone, shape, length');
+  assert(s.do_fit.includes('invoicing') && s.dont_fit.includes('crypto'), 'admin detail shows do/don’t fit');
+  assert(s.enrich_status === 'ok' && s.content_source === 'crawl-v1', 'admin detail shows enrich provenance');
+  assert(!('da' in s) && !('tf' in s) && !('cf' in s), 'admin detail omits Moz/Majestic');
 }
 r = await f('/admin/api/analytics', { headers: auth });
 {
@@ -118,6 +143,7 @@ r = await f('/admin');
   const adminHtml = await r.text();
   assert(r.status === 200 && adminHtml.includes('operator console'), 'admin UI serves');
 }
+assert(ADMIN_HTML.includes('data-open-site') && ADMIN_HTML.includes('site-drawer') && ADMIN_HTML.includes('crawl profile'), 'admin inventory opens a crawl drawer from the domain');
 r = await f('/.well-known/oauth-protected-resource');
 assert(r.status === 404, 'oauth discovery probes still 404');
 r = await f('/llms.txt');
@@ -203,6 +229,9 @@ assert(typeof g.metrics_attribution === 'string', 'Ahrefs attribution present');
 assert(!g.score_components || !('trust' in g.score_components), 'no Majestic trust on buyer score_components');
 assert(g.placement_score === 88 && !('cite_score' in g) && !('site_id' in g), 'public fields use publisher/placement_score');
 assert(!JSON.stringify(g).includes('secret-example'), 'domain still blind in get_publisher');
+assert(!/secret example/i.test(JSON.stringify(g)), 'get_publisher description does not leak the brand name');
+assert(!('recent_post_titles' in g) || g.recent_post_titles == null, 'get_publisher does not return exact headlines');
+assert(typeof g.content_summary === 'string' && /B2B finance/i.test(g.content_summary), 'get_publisher keeps a scrubbed description');
 assert(!('cost_type' in g) && !('acquisition_mode' in g), 'buyer payload does not advertise free/self-serve modes');
 
 // free sites never appear on the buyer MCP
@@ -944,6 +973,11 @@ console.log('\nall admin-key checks passed');
   assert(brief.publisher_id === 'cs_aaa111bbb222' && Array.isArray(brief.ask_the_human), 'brief asks homepage vs article');
   assert(brief.ask_the_human.some((x: string) => /homepage/i.test(x)), 'brief asks homepage vs a specific article');
   assert(!JSON.stringify(brief).includes('secret-example'), 'writing brief does not leak the publisher domain');
+  assert(brief.audience && /operators/i.test(brief.audience), 'writing brief includes crawl audience');
+  assert(brief.tone === 'practitioner' && brief.post_shape === 'how-to', 'writing brief includes tone and post shape');
+  assert(brief.do && brief.dont && brief.typical_length_words === 900, 'writing brief includes do/dont and typical length');
+  assert((brief.example_angles || []).some((x: string) => /finance|b2b/i.test(x)), 'example angles come from topics, not exact headlines');
+  assert(!(brief.example_angles || []).some((x: string) => /monthly close/i.test(x)), 'writing brief does not quote recent headlines');
 
   brief = await call('get_writing_brief', { publisher_id: 'cs_aaa111bbb222', target_url: 'https://contextengine.com/docs/overview' });
   assert(brief.link?.kind === 'article' && brief.link?.to === 'https://contextengine.com/docs/overview', 'article target is recorded on the brief');

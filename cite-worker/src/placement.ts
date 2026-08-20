@@ -2,6 +2,8 @@
  * Writing brief + inbound post screen. Buyer tools stay blind (no domain).
  * Ops mail /admin can see the publisher domain.
  */
+import { buyerPublicList, buyerPublicText } from './enrich-extract.js';
+
 export type BuyerSite = {
   id: string;
   domain: string;
@@ -14,12 +16,19 @@ export type BuyerSite = {
   summary: string | null;
   writes_about: string | null;
   recent_titles: string | null;
+  audience: string | null;
+  tone: string | null;
+  post_shape: string | null;
+  typical_length_words: number | null;
+  do_fit: string | null;
+  dont_fit: string | null;
 };
 
 export async function loadBuyerSite(db: D1Database, publisherId: string, buyerWhereSql: string): Promise<BuyerSite | null> {
   const row = (await db.prepare(`
     SELECT s.id, s.domain, s.listed_price, s.link_attribute, s.max_links_per_post, s.niche, s.subniche, s.cite_score,
-           c.summary, c.writes_about, c.recent_titles
+           c.summary, c.writes_about, c.recent_titles,
+           c.audience, c.tone, c.post_shape, c.typical_length_words, c.do_fit, c.dont_fit
     FROM sites s LEFT JOIN site_content c ON c.site_id = s.id
     WHERE s.id = ? AND ${buyerWhereSql}
   `).bind(publisherId).first()) as BuyerSite | null;
@@ -34,7 +43,7 @@ function parseJsonList(raw: string | null): string[] {
   if (!raw) return [];
   try {
     const v = JSON.parse(raw);
-    return Array.isArray(v) ? v.map((x) => String(x)).filter(Boolean).slice(0, 8) : [];
+    return Array.isArray(v) ? v.map((x) => String(x)).filter(Boolean).slice(0, 12) : [];
   } catch {
     return [];
   }
@@ -52,10 +61,10 @@ function linkKind(targetUrl: string | undefined): 'homepage' | 'article' | 'unkn
 }
 
 export function writingBrief(site: BuyerSite, targetUrl?: string) {
-  const topics = parseJsonList(site.writes_about);
-  const titles = parseJsonList(site.recent_titles);
+  const topics = buyerPublicList(parseJsonList(site.writes_about), site.domain, 12) ?? [];
   const kind = linkKind(targetUrl);
-  const minWords = 700;
+  const typical = Number(site.typical_length_words);
+  const minWords = Number.isFinite(typical) && typical > 700 ? Math.round(typical) : 700;
   const maxLinks = Number(site.max_links_per_post) > 0 ? Number(site.max_links_per_post) : 2;
   return {
     publisher_id: site.id,
@@ -64,10 +73,17 @@ export function writingBrief(site: BuyerSite, targetUrl?: string) {
     niche: site.niche,
     subniche: site.subniche || undefined,
     placement_score: site.cite_score,
-    content_summary: site.summary || undefined,
+    content_summary: buyerPublicText(site.summary, site.domain),
+    audience: buyerPublicText(site.audience, site.domain),
+    tone: buyerPublicText(site.tone, site.domain),
+    post_shape: buyerPublicText(site.post_shape, site.domain),
+    typical_length_words: Number.isFinite(typical) && typical > 0 ? Math.round(typical) : undefined,
+    do: buyerPublicText(site.do_fit, site.domain),
+    dont: buyerPublicText(site.dont_fit, site.domain),
     topics: topics.length ? topics : undefined,
-    example_angles: titles.length
-      ? titles.map((t) => `A post in the same neighborhood as “${t}” — do not copy it.`)
+    // Topics only — exact recent headlines fingerprint the publisher if googled.
+    example_angles: topics.length
+      ? topics.slice(0, 3).map((t) => `A finished post on ${t} that this publisher’s readers would already expect.`)
       : ['A practical explainer the publisher’s readers would already expect in this niche.'],
     link: {
       attribute: site.link_attribute || 'unknown',

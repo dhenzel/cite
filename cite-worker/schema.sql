@@ -119,7 +119,15 @@ CREATE TABLE IF NOT EXISTS site_content (
   writes_about TEXT,
   recent_titles TEXT,
   enriched_at TEXT,
-  source TEXT
+  source TEXT,
+  audience TEXT,
+  tone TEXT,
+  post_shape TEXT,
+  typical_length_words INTEGER,
+  do_fit TEXT,
+  dont_fit TEXT,
+  summary_private TEXT,
+  enrich_status TEXT
 );
 
 CREATE TABLE IF NOT EXISTS placements (

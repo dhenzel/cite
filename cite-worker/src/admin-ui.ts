@@ -194,6 +194,26 @@ export const ADMIN_HTML = `<!doctype html>
     background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:12px 14px;
     max-height:22rem; overflow:auto; margin:0 0 12px; }
   .order .actions { display:flex; gap:8px; flex-wrap:wrap; }
+  .domain-btn { background:none; border:0; padding:0; color:var(--cyan); font:inherit; font-weight:600;
+                cursor:pointer; text-decoration:underline; text-underline-offset:2px; }
+  .domain-btn:hover { color:var(--ink); }
+  .drawer-bg { position:fixed; inset:0; background:rgba(23,32,75,.35); z-index:40; }
+  .drawer { position:fixed; top:0; right:0; bottom:0; width:min(480px,100vw); background:var(--surface); z-index:41;
+            box-shadow:-12px 0 40px rgba(23,32,75,.18); display:flex; flex-direction:column; }
+  .drawer-head { display:flex; align-items:flex-start; gap:12px; padding:18px 20px 12px;
+                 border-bottom:1px solid rgba(255,255,255,.08); background:var(--navy); color:#fff; }
+  .drawer-head h2 { margin:0; font-size:18px; letter-spacing:-.02em; word-break:break-all; }
+  .drawer-head .sub { color:rgba(255,255,255,.7); margin:4px 0 0; }
+  .drawer-head button { margin-left:auto; }
+  .drawer-body { overflow:auto; padding:16px 20px 32px; }
+  .sd-sec { margin:0 0 16px; }
+  .sd-sec h3 { margin:0 0 6px; font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }
+  .sd-sec p { margin:0 0 6px; white-space:pre-wrap; word-break:break-word; }
+  .sd-titles { margin:0; padding-left:18px; }
+  .sd-titles li { margin:0 0 4px; white-space:normal; }
+  .sd-kicker { display:flex; flex-wrap:wrap; gap:8px 12px; align-items:baseline; margin:0 0 8px; }
+  .sd-kicker a { color:var(--cyan); font-weight:700; }
+  .drawer .pill { margin:0 6px 6px 0; }
 </style>
 </head>
 <body>
@@ -224,7 +244,7 @@ export const ADMIN_HTML = `<!doctype html>
     <select id="fmode"><option value="">all modes</option><option value="paid_placement">paid_placement</option><option value="self_serve">self_serve</option><option value="apply_editorial">apply_editorial</option><option value="link_exchange">link_exchange</option><option value="unavailable">unavailable</option></select>
     <button class="primary" onclick="load(1)">Search</button>
   </div>
-  <p class="hint">Click any column header to sort. Score starts highest first.</p>
+  <p class="hint">Click a domain to see the crawl profile. Click any column header to sort. Score starts highest first.</p>
   <details>
     <summary>+ Add site</summary>
     <div class="addform">
@@ -335,6 +355,17 @@ export const ADMIN_HTML = `<!doctype html>
       <div class="prose sub" id="k_alt"></div>
     </section>
   </div>
+</div>
+<div id="site-drawer-bg" class="drawer-bg" hidden></div>
+<div id="site-drawer" class="drawer" hidden>
+  <div class="drawer-head">
+    <div>
+      <h2 id="sd-domain">Site</h2>
+      <p class="sub" id="sd-handle"></p>
+    </div>
+    <button type="button" id="sd-close">Close</button>
+  </div>
+  <div id="sd-body" class="drawer-body"></div>
 </div>
 <div class="toast" id="toast"></div>
 
@@ -517,6 +548,8 @@ async function boot() {
     const el = $('whoami');
     if (el) el.innerHTML = '<span class="sub">Shortlist status unavailable</span> <a href="/auth/logout">Sign out</a>';
   });
+  const deep = location.hash.match(/^#site-(cs_[a-z0-9]+)$/);
+  if (deep) openSite(deep[1]);
 }
 async function stats() {
   const s = await (await fetch('/admin/api/stats', { headers: hdrs() })).json();
@@ -841,6 +874,11 @@ function sortMini(th) {
   rows.forEach(r => tbody.appendChild(r));
 }
 const esc = (s) => (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function enrichPill(s) {
+  if (s.enrich_status === 'ok') return ' <span class="pill active">crawled</span>';
+  if (s.enrich_status) return ' <span class="pill">' + esc(s.enrich_status) + '</span>';
+  return '';
+}
 function rowHtml(s) {
   const margin = s.margin == null ? '–' : '$' + s.margin;
   const mclass = s.margin > 0 ? 'margin-pos' : s.margin < 0 ? 'margin-neg' : '';
@@ -848,7 +886,7 @@ function rowHtml(s) {
   const stats_ = ['active','paused','burned'];
   const modes = ['paid_placement','self_serve','apply_editorial','link_exchange','unavailable'];
   return '<tr data-id="' + s.id + '">' +
-    '<td class="domain">' + esc(s.domain) + (s.note ? '<div class="sub">' + esc(s.note).slice(0,60) + '</div>' : '') + '</td>' +
+    '<td class="domain"><button type="button" class="domain-btn" data-open-site="' + esc(s.id) + '">' + esc(s.domain) + '</button>' + enrichPill(s) + (s.note ? '<div class="sub">' + esc(s.note).slice(0,60) + '</div>' : '') + '</td>' +
     '<td>' + esc(s.niche ?? '–') + (s.subniche ? '<div class="sub">' + esc(s.subniche) + '</div>' : '') + '</td>' +
     '<td class="num">' + (s.cite_score ?? '–') + '</td>' +
     '<td class="num">' + (s.dr ?? '–') + '</td>' +
@@ -927,12 +965,98 @@ document.getElementById('rows').addEventListener('change', (ev) => {
 });
 
 document.getElementById('pane-inv').addEventListener('click', (ev) => {
+  const open = ev.target && ev.target.closest && ev.target.closest('[data-open-site]');
+  if (open && open.dataset.openSite) { openSite(open.dataset.openSite); return; }
   const th = ev.target && ev.target.closest && ev.target.closest('th.sort');
   if (th && th.dataset.sort) setSort(th.dataset.sort);
 });
 document.getElementById('pane-ana').addEventListener('click', (ev) => {
   const th = ev.target && ev.target.closest && ev.target.closest('th.sort');
   if (th) sortMini(th);
+});
+
+let siteOpenId = null;
+function sdBlock(label, html) {
+  if (!html) return '';
+  return '<section class="sd-sec"><h3>' + esc(label) + '</h3>' + html + '</section>';
+}
+function sdPara(text) {
+  if (!text) return '';
+  return '<p>' + esc(text) + '</p>';
+}
+function sdChips(list) {
+  if (!list || !list.length) return '';
+  return '<p>' + list.map(t => '<span class="pill">' + esc(t) + '</span>').join(' ') + '</p>';
+}
+function sdTitles(list) {
+  if (!list || !list.length) return '';
+  return '<ul class="sd-titles">' + list.map(t => '<li>' + esc(t) + '</li>').join('') + '</ul>';
+}
+function siteDrawerHtml(s) {
+  const href = 'https://' + (s.domain || '');
+  const enrich = s.enrich_status
+    ? (esc(s.enrich_status) + (s.content_source ? ' · ' + esc(s.content_source) : '') + (s.enriched_at ? ' · ' + esc(String(s.enriched_at).slice(0, 16)) : ''))
+    : 'not crawled';
+  const hasProfile = !!(s.summary || s.summary_private || (s.writes_about && s.writes_about.length) || (s.recent_titles && s.recent_titles.length) || s.audience || s.tone);
+  return '<p class="sd-kicker"><a href="' + esc(href) + '" target="_blank" rel="noopener">' + esc(s.domain) + '</a></p>'
+    + '<p class="meta">' + esc(s.niche || '–') + (s.subniche ? ' / ' + esc(s.subniche) : '')
+    + ' · score ' + (s.cite_score ?? '–')
+    + (s.contact_email ? ' · ' + esc(s.contact_email) : '')
+    + (s.contact_name ? ' · ' + esc(s.contact_name) : '')
+    + '</p>'
+    + '<p class="sub">Crawl: ' + enrich + '</p>'
+    + sdBlock('Buyer-facing summary', sdPara(s.summary))
+    + sdBlock('Private notes', sdPara(s.summary_private))
+    + sdBlock('Audience', sdPara(s.audience))
+    + sdBlock('Tone', sdPara(s.tone))
+    + sdBlock('Post shape', sdPara(s.post_shape) + (s.typical_length_words ? '<p class="sub">Typical length: ' + esc(s.typical_length_words) + ' words</p>' : ''))
+    + sdBlock('Do fit', sdPara(s.do_fit))
+    + sdBlock("Don't fit", sdPara(s.dont_fit))
+    + sdBlock('Topics', sdChips(s.writes_about))
+    + sdBlock('Recent titles', sdTitles(s.recent_titles))
+    + (hasProfile ? '' : '<p class="empty">No crawl profile for this domain yet.</p>');
+}
+async function openSite(id) {
+  if (!id) return;
+  showTab('inv');
+  if (siteOpenId === id) {
+    $('site-drawer-bg').hidden = false;
+    $('site-drawer').hidden = false;
+    return;
+  }
+  siteOpenId = id;
+  const want = '#site-' + id;
+  if (location.hash !== want) location.hash = want;
+  $('site-drawer-bg').hidden = false;
+  $('site-drawer').hidden = false;
+  $('sd-domain').textContent = 'Loading…';
+  $('sd-handle').textContent = id;
+  $('sd-body').innerHTML = '<p class="sub">Loading crawl profile…</p>';
+  const r = await fetch('/admin/api/sites/' + id, { headers: hdrs() });
+  if (r.status === 401) { location.href = '/auth/login'; return; }
+  if (r.status === 404) { $('sd-body').innerHTML = '<p class="empty">Site not found.</p>'; return; }
+  if (!r.ok) { $('sd-body').innerHTML = '<p class="empty">Could not load this site.</p>'; return; }
+  const d = await r.json();
+  const s = d.site || {};
+  $('sd-domain').textContent = s.domain || id;
+  $('sd-handle').textContent = s.id || id;
+  $('sd-body').innerHTML = siteDrawerHtml(s);
+}
+function closeSite() {
+  siteOpenId = null;
+  if ($('site-drawer-bg')) $('site-drawer-bg').hidden = true;
+  if ($('site-drawer')) $('site-drawer').hidden = true;
+  if (location.hash.indexOf('#site-') === 0) history.replaceState(null, '', location.pathname + location.search);
+}
+$('site-drawer-bg').addEventListener('click', closeSite);
+$('sd-close').addEventListener('click', closeSite);
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape' && $('site-drawer') && !$('site-drawer').hidden) closeSite();
+});
+window.addEventListener('hashchange', () => {
+  const m = location.hash.match(/^#site-(cs_[a-z0-9]+)$/);
+  if (m) openSite(m[1]);
+  else if (siteOpenId) closeSite();
 });
 
 boot();

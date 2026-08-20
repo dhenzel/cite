@@ -63,6 +63,7 @@ const LIMIT = flag('limit') ? Number(flag('limit')) : Infinity;
 const OFFSET = Number(flag('offset') ?? 0);
 const USE_LLM = has('llm');
 const FORCE = has('force');
+const RETRY_FAILED = has('retry-failed');
 const XAI_KEY = process.env.XAI_API_KEY ?? '';
 const XAI_MODEL = process.env.XAI_MODEL || 'grok-4-fast';
 
@@ -88,7 +89,8 @@ async function loadDone(outPath: string): Promise<Set<string>> {
     if (!line.trim()) continue;
     try {
       const row = JSON.parse(line) as EnrichRow;
-      if (row.site_id && (FORCE ? false : row.enrich_status === 'ok')) done.add(row.site_id);
+      if (!row.site_id || FORCE) continue;
+      if (row.enrich_status === 'ok' || !RETRY_FAILED) done.add(row.site_id);
     } catch { /* skip bad line */ }
   }
   return done;

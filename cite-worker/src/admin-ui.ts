@@ -200,6 +200,8 @@ export const ADMIN_HTML = `<!doctype html>
   .drawer-bg { position:fixed; inset:0; background:rgba(23,32,75,.35); z-index:40; }
   .drawer { position:fixed; top:0; right:0; bottom:0; width:min(480px,100vw); background:var(--surface); z-index:41;
             box-shadow:-12px 0 40px rgba(23,32,75,.18); display:flex; flex-direction:column; }
+  /* Author display:flex beats the UA [hidden] rule — Close would leave the panel up. */
+  .drawer[hidden], .drawer-bg[hidden] { display:none !important; }
   .drawer-head { display:flex; align-items:flex-start; gap:12px; padding:18px 20px 12px;
                  border-bottom:1px solid rgba(255,255,255,.08); background:var(--navy); color:#fff; }
   .drawer-head h2 { margin:0; font-size:18px; letter-spacing:-.02em; word-break:break-all; }

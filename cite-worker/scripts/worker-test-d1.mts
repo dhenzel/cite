@@ -144,6 +144,7 @@ r = await f('/admin');
   assert(r.status === 200 && adminHtml.includes('operator console'), 'admin UI serves');
 }
 assert(ADMIN_HTML.includes('data-open-site') && ADMIN_HTML.includes('site-drawer') && ADMIN_HTML.includes('crawl profile'), 'admin inventory opens a crawl drawer from the domain');
+assert(ADMIN_HTML.includes('.drawer[hidden]') && ADMIN_HTML.includes('display:none !important'), 'drawer Close can hide a flex panel');
 r = await f('/.well-known/oauth-protected-resource');
 assert(r.status === 404, 'oauth discovery probes still 404');
 r = await f('/llms.txt');

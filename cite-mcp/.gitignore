@@ -1,0 +1,5 @@
+# Publisher data is private — never commit it (emails, domains, seller prices).
+data/
+*.db
+*.db-journal
+node_modules/

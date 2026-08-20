@@ -1,0 +1,46 @@
+name = "cite-mcp"
+main = "src/index.ts"
+compatibility_date = "2026-08-01"
+workers_dev = true
+
+# Custom Domains on the placement.sh zone (Cloudflare NS already).
+# `wrangler deploy` creates DNS + certs. Fails if a hostname already has a
+# CNAME — delete that record first (apex A/AAAA placeholders are usually replaced).
+[[routes]]
+pattern = "placement.sh"
+custom_domain = true
+
+[[routes]]
+pattern = "www.placement.sh"
+custom_domain = true
+
+[[routes]]
+pattern = "mcp.placement.sh"
+custom_domain = true
+
+# Working store: full private dataset lives in D1 (cite-v0, main account).
+# Public MCP tools serve whitelisted fields only; /admin/api/* (bearer
+# ADMIN_TOKEN secret) is the only surface returning private columns.
+# Set the secret before first use:  npx wrangler secret put ADMIN_TOKEN
+[[d1_databases]]
+binding = "DB"
+database_name = "cite-v0"
+database_id = "9e822ecc-00fb-4b67-877a-3197e7e9a0de"
+
+[observability]
+enabled = true
+
+# Shortlist Context Engine SSO (SPEC §18). Secrets are NOT here — set them with
+# `wrangler secret put`:  OIDC_CLIENT_SECRET, SESSION_SECRET, ADMIN_TOKEN
+[vars]
+OIDC_ISSUER = "https://shortlist.on-relote.com"
+OIDC_CLIENT_ID = "8c5c0c33607c048dd2595658c48a94d3"
+OIDC_REDIRECT_URI = "https://cite-mcp.d-henzel.workers.dev/auth/callback"
+ENGINE_MCP_URL = "https://shortlist.on-relote.com/mcp"
+# Who may open the console: this ability, OR an email in CITE_ADMIN_EMAILS.
+CITE_ADMIN_ABILITY = "*:read"
+CITE_ADMIN_EMAILS = ""
+# Break-glass: lets the operator token open the web console, so a broken engine
+# can never lock the team out of their own inventory. Set to "false" once
+# Shortlist sign-in is confirmed working.
+ALLOW_TOKEN_CONSOLE = "true"

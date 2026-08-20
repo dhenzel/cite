@@ -31,17 +31,17 @@ assert.equal(rssTitles[0], 'Payroll mistakes that stall hiring');
 const topics = topicsFrom(titles, 'Guides on payroll, B2B invoicing, and cash flow.');
 assert(topics.includes('payroll') || topics.some((t) => t.includes('invoice')), 'topics from titles + meta');
 
-const domain = 'secret-example.com';
+const domain = 'secretexample.com';
 const summary = crawlSummary({
   domain,
   title: 'Secret Example — finance',
   metaDesc: 'Secret Example covers payroll for operators.',
   titles: ['How Secret Example readers close the books'],
 });
-assert(!/secret-example/i.test(summary), 'crawl summary scrubs the domain');
+assert(!/secretexample/i.test(summary), 'crawl summary scrubs the domain');
 assert(summary.includes('[site]'), 'scrub replaces the brand token');
-assert(leaksDomain('visit secret-example.com today', domain), 'leak detector sees the domain');
-assert(!leaksDomain(scrub('visit secret-example.com today', domain), domain), 'scrubbed text does not leak');
+assert(leaksDomain('visit secretexample.com today', domain), 'leak detector sees the domain');
+assert(!leaksDomain(scrub('visit secretexample.com today', domain), domain), 'scrubbed text does not leak');
 
 const robots = parseRobots('User-agent: *\nDisallow: /wp-admin/\nDisallow: /');
 assert(pathDisallowed('/', robots.disallow), 'Disallow: / blocks the homepage');
@@ -60,7 +60,7 @@ const profile = parseLlmProfile(JSON.stringify({
   summary_public: 'A finance publication for operators covering payroll and close.',
 }), domain);
 assert(profile, 'parses a valid Grok profile');
-assert(profile && !/secret-example/i.test(profile.audience), 'LLM audience is scrubbed');
+assert(profile && !/secretexample/i.test(profile.audience), 'LLM audience is scrubbed');
 assert.equal(profile?.typical_length_words, 900);
 assert.equal(parseLlmProfile('not json', domain), null, 'rejects garbage');
 

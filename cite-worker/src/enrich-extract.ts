@@ -116,13 +116,13 @@ export function extractTitles(html: string): string[] {
 }
 
 export function extractRssTitles(xml: string): string[] {
-  const out: string[] = [];
+  const raw: string[] = [];
   for (const m of xml.matchAll(/<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/gi)) {
-    const t = decodeEntities(m[1].replace(/\s+/g, ' ').trim());
-    if (t.length > 20 && t.length < 140) out.push(t);
-    if (out.length >= 13) break;
+    raw.push(decodeEntities(m[1].replace(/\s+/g, ' ').trim()));
+    if (raw.length >= 16) break;
   }
-  return out.slice(1);
+  // First <title> is the channel/feed name, even when it is short.
+  return raw.slice(1).filter((t) => t.length > 20 && t.length < 140).slice(0, 12);
 }
 
 export function extractRssHref(html: string): string | null {

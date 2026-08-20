@@ -71,6 +71,25 @@ d = await r.json();
   const names = d.sites.map((s: { domain: string }) => s.domain);
   assert(names.join() === [...names].sort().join(), 'admin list sorts by domain asc');
   assert(d.sort === 'domain' && d.dir === 'asc', 'admin list echoes the sort');
+  const secret = d.sites.find((s: { id: string }) => s.id === 'cs_aaa111bbb222');
+  assert(secret?.enrich_status === 'ok' && secret?.content_source === 'crawl-v1', 'admin list includes crawl status');
+}
+r = await f('/admin/api/sites/cs_aaa111bbb222');
+assert(r.status === 401, 'admin site detail 401 without token');
+r = await f('/admin/api/sites/cs_doesnotexist1', { headers: auth });
+assert(r.status === 404, 'admin site detail 404 for unknown id');
+r = await f('/admin/api/sites/cs_aaa111bbb222', { headers: auth });
+d = await r.json();
+{
+  const s = d.site;
+  assert(s.domain === 'secret-example.com' && s.contact_email === 'owner@secret-example.com', 'admin detail returns the domain');
+  assert(typeof s.summary === 'string' && s.summary.includes('B2B finance') && s.summary.includes('Secret Example'), 'admin detail shows the crawled summary with the brand');
+  assert(Array.isArray(s.writes_about) && s.writes_about.includes('finance') && s.writes_about.includes('Secret Example'), 'admin detail parses topics');
+  assert(Array.isArray(s.recent_titles) && s.recent_titles.includes('How operators run monthly close'), 'admin detail shows crawled titles');
+  assert(s.audience && s.tone === 'practitioner' && s.post_shape === 'how-to' && s.typical_length_words === 900, 'admin detail shows audience, tone, shape, length');
+  assert(s.do_fit.includes('invoicing') && s.dont_fit.includes('crypto'), 'admin detail shows do/don’t fit');
+  assert(s.enrich_status === 'ok' && s.content_source === 'crawl-v1', 'admin detail shows enrich provenance');
+  assert(!('da' in s) && !('tf' in s) && !('cf' in s), 'admin detail omits Moz/Majestic');
 }
 r = await f('/admin/api/analytics', { headers: auth });
 {
@@ -122,6 +141,7 @@ r = await f('/admin');
 {
   const adminHtml = await r.text();
   assert(r.status === 200 && adminHtml.includes('operator console'), 'admin UI serves');
+  assert(adminHtml.includes('data-open-site') && adminHtml.includes('site-drawer') && adminHtml.includes('crawl profile'), 'admin inventory opens a crawl drawer from the domain');
 }
 r = await f('/.well-known/oauth-protected-resource');
 assert(r.status === 404, 'oauth discovery probes still 404');

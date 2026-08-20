@@ -145,6 +145,16 @@ const parseTopicList = (raw: unknown): string[] => {
   }
 };
 
+/** Full operator view of one site plus crawl profile. Brands and headlines stay visible. */
+const operatorSiteDetail = (r: Row): Row => {
+  const site = operatorSite(r);
+  return {
+    ...site,
+    writes_about: parseTopicList(r.writes_about),
+    recent_titles: parseTopicList(r.recent_titles),
+  };
+};
+
 const pub = (r: Row, detail = false) => {
   const domain = String(r.domain || '');
   const base: Row = {
@@ -1238,14 +1248,19 @@ async function handleAdminApi(req: Request, env: Env, path: string): Promise<Res
     const where = clauses.join(' AND ');
     const total = (await env.DB.prepare(`SELECT COUNT(*) AS n FROM sites WHERE ${where}`).bind(...params).first()) as { n: number };
     const rows = (await env.DB.prepare(`
-      SELECT id, domain, niche, subniche, cite_score, traffic_band, seller_price, markup, listed_price,
-             link_attribute, max_links_per_post, turnaround_sla_days, status, contact_email, note,
-             dr, traffic, ahrefs_organic_keywords, ahrefs_referring_domains, ahrefs_backlinks,
-             ahrefs_rank, ahrefs_organic_value,
-             COALESCE(cost_type,'paid') AS cost_type,
-             COALESCE(acquisition_mode,'paid_placement') AS acquisition_mode,
-             requires_reciprocal_link, agent_instructions
-      FROM sites WHERE ${where}
+      SELECT sites.id, sites.domain, sites.niche, sites.subniche, sites.cite_score, sites.traffic_band,
+             sites.seller_price, sites.markup, sites.listed_price,
+             sites.link_attribute, sites.max_links_per_post, sites.turnaround_sla_days, sites.status,
+             sites.contact_email, sites.note,
+             sites.dr, sites.traffic, sites.ahrefs_organic_keywords, sites.ahrefs_referring_domains,
+             sites.ahrefs_backlinks, sites.ahrefs_rank, sites.ahrefs_organic_value,
+             COALESCE(sites.cost_type,'paid') AS cost_type,
+             COALESCE(sites.acquisition_mode,'paid_placement') AS acquisition_mode,
+             sites.requires_reciprocal_link, sites.agent_instructions,
+             site_content.enrich_status, site_content.source AS content_source
+      FROM sites
+      LEFT JOIN site_content ON site_content.site_id = sites.id
+      WHERE ${where}
       ORDER BY ${sortSql} IS NULL, ${sortSql} ${sortDir} LIMIT ? OFFSET ?
     `).bind(...params, per, (page - 1) * per).all()).results as Row[];
     for (const r of rows) {
@@ -1258,9 +1273,33 @@ async function handleAdminApi(req: Request, env: Env, path: string): Promise<Res
     });
   }
 
-  const patchMatch = path.match(/^\/admin\/api\/sites\/(cs_[a-z0-9]+)$/);
-  if (patchMatch && req.method === 'PATCH') {
-    const id = patchMatch[1];
+  const siteMatch = path.match(/^\/admin\/api\/sites\/(cs_[a-z0-9]+)$/);
+  if (siteMatch && req.method === 'GET') {
+    const id = siteMatch[1];
+    const row = await env.DB.prepare(`
+      SELECT sites.id, sites.domain, sites.niche, sites.subniche, sites.cite_score, sites.traffic_band,
+             sites.seller_price, sites.markup, sites.listed_price,
+             sites.link_attribute, sites.max_links_per_post, sites.turnaround_sla_days, sites.status,
+             sites.contact_email, sites.contact_name, sites.note,
+             sites.dr, sites.traffic, sites.ahrefs_organic_keywords, sites.ahrefs_referring_domains,
+             sites.ahrefs_backlinks, sites.ahrefs_rank, sites.ahrefs_organic_value,
+             COALESCE(sites.cost_type,'paid') AS cost_type,
+             COALESCE(sites.acquisition_mode,'paid_placement') AS acquisition_mode,
+             sites.requires_reciprocal_link, sites.agent_instructions,
+             site_content.summary, site_content.writes_about, site_content.recent_titles,
+             site_content.audience, site_content.tone, site_content.post_shape,
+             site_content.typical_length_words, site_content.do_fit, site_content.dont_fit,
+             site_content.summary_private, site_content.enrich_status,
+             site_content.source AS content_source, site_content.enriched_at
+      FROM sites
+      LEFT JOIN site_content ON site_content.site_id = sites.id
+      WHERE sites.id = ?
+    `).bind(id).first() as Row | null;
+    if (!row) return json({ error: 'SITE_NOT_FOUND', id }, 404);
+    return json({ site: operatorSiteDetail(row) });
+  }
+  if (siteMatch && req.method === 'PATCH') {
+    const id = siteMatch[1];
     const body = (await req.json()) as Row;
     const sets: string[] = [];
     const params: unknown[] = [];
